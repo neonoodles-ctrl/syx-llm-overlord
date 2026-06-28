@@ -10,12 +10,40 @@ import yaml
 
 @dataclass
 class LLMConfig:
-    provider: str = "openai"
+    provider: str = "openai"  # openai, anthropic, ollama, together, groq, openrouter, api
     model: str = "gpt-4o"
     api_key: str = ""
     base_url: str | None = None
     max_tokens: int = 2048
     temperature: float = 0.7
+
+    # Provider presets: maps provider name -> (base_url, default_model)
+    PROVIDER_PRESETS: dict = field(default_factory=lambda: {
+        "openai":      (None, "gpt-4o"),
+        "anthropic":   (None, "claude-sonnet-4-20250514"),
+        "ollama":      ("http://localhost:11434/v1", "llama3"),
+        "together":    ("https://api.together.xyz/v1", "meta-llama/Llama-3-70b-chat-hf"),
+        "groq":        ("https://api.groq.com/openai/v1", "llama3-70b-8192"),
+        "openrouter":  ("https://openrouter.ai/api/v1", "meta-llama/llama-3-70b-instruct"),
+        "deepseek":    ("https://api.deepseek.com/v1", "deepseek-chat"),
+        "fireworks":   ("https://api.fireworks.ai/inference/v1", "accounts/fireworks/models/llama-v3-70b-instruct"),
+        "api":         (None, "gpt-4o"),  # generic -- user provides base_url + api_key
+    })
+
+    def resolve(self) -> tuple[str | None, str]:
+        """Return (base_url, api_key) after applying provider presets."""
+        preset = self.PROVIDER_PRESETS.get(self.provider)
+        url = self.base_url
+        key = self.api_key
+
+        if preset and not url:
+            url = preset[0]
+
+        # Ollama doesn't need a real key
+        if self.provider == "ollama" and not key:
+            key = "ollama"
+
+        return url, key
 
 
 @dataclass

@@ -69,18 +69,18 @@ class LLMBrain:
 
     def _init_client(self):
         """Initialize the LLM client based on provider."""
-        if self.config.provider in ("openai", "ollama"):
-            from openai import OpenAI
-            kwargs = {"api_key": self.config.api_key}
-            if self.config.base_url:
-                kwargs["base_url"] = self.config.base_url
-            elif self.config.provider == "ollama":
-                kwargs["base_url"] = "http://localhost:11434/v1"
-                kwargs["api_key"] = "ollama"
-            self._client = OpenAI(**kwargs)
-        elif self.config.provider == "anthropic":
+        base_url, api_key = self.config.resolve()
+
+        if self.config.provider == "anthropic":
             from anthropic import Anthropic
-            self._client = Anthropic(api_key=self.config.api_key)
+            self._client = Anthropic(api_key=api_key)
+        else:
+            # All other providers use the OpenAI-compatible SDK
+            from openai import OpenAI
+            kwargs = {"api_key": api_key}
+            if base_url:
+                kwargs["base_url"] = base_url
+            self._client = OpenAI(**kwargs)
 
     def decide(self, state: GameState, recent_history: list[str] | None = None) -> LLMDecision:
         """Get an LLM decision based on current game state."""
@@ -91,12 +91,10 @@ class LLMBrain:
         )
 
         try:
-            if self.config.provider in ("openai", "ollama"):
-                return self._decide_openai(user_prompt)
-            elif self.config.provider == "anthropic":
+            if self.config.provider == "anthropic":
                 return self._decide_anthropic(user_prompt)
             else:
-                raise ValueError(f"Unknown provider: {self.config.provider}")
+                return self._decide_openai(user_prompt)
         except Exception as e:
             logger.error(f"LLM decision failed: {e}")
             return LLMDecision(
