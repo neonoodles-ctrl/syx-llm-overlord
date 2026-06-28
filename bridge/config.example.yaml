@@ -1,0 +1,20 @@
+llm:
+  provider: openai        # openai, ollama, anthropic
+  model: gpt-4o
+  api_key: ${OPENAI_API_KEY}
+  base_url: null          # for Ollama: http://localhost:11434/v1
+  max_tokens: 2048
+  temperature: 0.7
+
+game:
+  mod_url: http://localhost:47823
+  poll_interval_seconds: 5
+  command_rate_limit: 3   # max commands per decision cycle
+
+dashboard:
+  port: 3847
+  ws_enabled: true
+
+logging:
+  level: INFO
+  file: syx-overlord.log
