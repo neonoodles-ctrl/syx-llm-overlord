@@ -7,12 +7,13 @@ import java.util.*;
  */
 public class GameState {
     public long timestamp;
+    public int tickCount;
     public Map<String, Object> population;
     public Map<String, Object> resources;
     public Map<String, Object> happiness;
     public Map<String, Object> roomCounts;
     public Map<String, Object> military;
     public Map<String, Object> diplomacy;
-    public Map<String, Object> gameTime;
+    public List<String> availableRaces;
     public List<String> errors = new ArrayList<>();
 }

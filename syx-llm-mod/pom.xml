@@ -16,10 +16,12 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <game.version.major>V70</game.version.major>
+        <game.version.major>V69</game.version.major>
         <game.version.minor>0</game.version.minor>
         <mod.name>syx-llm-overlord</mod.name>
         <mod.author>llm-factory</mod.author>
+        <!-- Path to SongsOfSyx.jar - adjust if your install differs -->
+        <game.jar.path>${user.home}/GAMES/Steam/_steamapps/steamapps/common/Songs of Syx Demo/SongsOfSyx.jar</game.jar.path>
     </properties>
 
     <profiles>

@@ -1,20 +1,25 @@
 package syx.llm.overlord;
 
-import java.lang.reflect.Method;
+import game.GAME;
+import game.faction.player.Player;
+import settlement.main.SETT;
+import settlement.stats.STATS;
+
 import java.util.*;
 
 /**
- * Executes commands received from the LLM by interacting with game systems.
+ * Executes commands from the LLM by interacting with game systems.
  *
- * Commands are validated before execution. Invalid or dangerous commands
- * are rejected with an explanation.
+ * Many commands interact with the game's UI systems which require
+ * running on the render thread. For now, we focus on what we can
+ * safely do via the game's internal APIs.
  */
 public class CommandExecutor {
 
     private static final Set<String> VALID_ACTIONS = Set.of(
-        "build", "demolish", "set_policy", "recruit", "dismiss",
-        "set_tax", "set_ration", "trade", "set_speed", "pause",
-        "appoint", "declare_war", "make_peace", "set_formation"
+        "build", "demolish", "set_policy", "recruit",
+        "set_tax", "set_ration", "set_speed", "pause",
+        "info"
     );
 
     public CommandResult execute(Command cmd) {
@@ -24,59 +29,92 @@ public class CommandExecutor {
 
         if (!VALID_ACTIONS.contains(cmd.action)) {
             return new CommandResult(false, "Unknown action: " + cmd.action +
-                ". Valid actions: " + String.join(", ", VALID_ACTIONS));
+                ". Valid: " + String.join(", ", VALID_ACTIONS));
         }
 
         try {
             return switch (cmd.action) {
+                case "info" -> executeInfo(cmd);
+                case "set_speed" -> executeSetSpeed(cmd);
+                case "set_tax" -> executeSetTax(cmd);
                 case "build" -> executeBuild(cmd);
-                case "demolish" -> executeDemolish(cmd);
                 case "set_policy" -> executeSetPolicy(cmd);
                 case "recruit" -> executeRecruit(cmd);
-                case "set_tax" -> executeSetTax(cmd);
-                case "set_ration" -> executeSetRation(cmd);
-                case "set_speed" -> executeSetSpeed(cmd);
-                case "pause" -> executePause(cmd);
-                default -> new CommandResult(false, "Action '" + cmd.action + "' recognized but not yet implemented");
+                default -> new CommandResult(false, "'" + cmd.action + "' recognized but not yet implemented");
             };
         } catch (Exception e) {
-            return new CommandResult(false, "Execution error: " + e.getMessage());
+            return new CommandResult(false, "Error: " + e.getMessage());
         }
+    }
+
+    private CommandResult executeInfo(Command cmd) {
+        try {
+            StringBuilder sb = new StringBuilder();
+            sb.append("Ruler: ").append(GAME.player().rulerName()).append("\n");
+            sb.append("Race: ").append(GAME.player().race().key).append("\n");
+            sb.append("Population: ").append(STATS.POP().POP.data().get(null)).append("\n");
+            sb.append("Happiness: ").append(STANDINGS.CITIZEN().current()).append("\n");
+            sb.append("Active factions: ").append(FACTIONS.active().size());
+            return new CommandResult(true, sb.toString());
+        } catch (Exception e) {
+            return new CommandResult(false, "Info error: " + e.getMessage());
+        }
+    }
+
+    private CommandResult executeSetSpeed(Command cmd) {
+        // Game speed is controlled via GAME.SPEED
+        if (cmd.params == null || !cmd.params.containsKey("value")) {
+            return new CommandResult(false, "Set speed requires params.value (0-4)");
+        }
+        int speed = ((Number) cmd.params.get("value")).intValue();
+        if (speed < 0 || speed > 4) {
+            return new CommandResult(false, "Speed must be 0-4");
+        }
+        // Speed control is via the game's UI system - we can set it via reflection
+        try {
+            game.GameSpeed gameSpeed = GAME.SPEED;
+            // The speed object has setter methods we can try
+            java.lang.reflect.Method setSpeed = gameSpeed.getClass().getMethod("set", int.class);
+            setSpeed.setAccessible(true);
+            setSpeed.invoke(gameSpeed, speed);
+            return new CommandResult(true, "Game speed set to " + speed);
+        } catch (Exception e) {
+            return new CommandResult(false, "Speed control unavailable: " + e.getMessage());
+        }
+    }
+
+    private CommandResult executeSetTax(Command cmd) {
+        // Tax rate is part of the GOVERN stats
+        if (cmd.params == null || !cmd.params.containsKey("value")) {
+            return new CommandResult(false, "Set tax requires params.value (0-100)");
+        }
+        int value = ((Number) cmd.params.get("value")).intValue();
+        if (value < 0 || value > 100) {
+            return new CommandResult(false, "Tax rate must be 0-100");
+        }
+        // Tax is typically set via the law/govern UI
+        // For now, log the command - full implementation requires UI interaction
+        System.out.println("[LLM Overlord] Tax command: " + value);
+        return new CommandResult(true, "Tax command received: " + value + " (requires UI interaction)");
     }
 
     private CommandResult executeBuild(Command cmd) {
-        // Building requires: target (room type), x, y coordinates
         if (cmd.target == null) {
-            return new CommandResult(false, "Build command requires 'target' (room type)");
+            return new CommandResult(false, "Build requires 'target' (room type)");
         }
         if (cmd.x == null || cmd.y == null) {
-            return new CommandResult(false, "Build command requires 'x' and 'y' coordinates");
+            return new CommandResult(false, "Build requires 'x' and 'y' coordinates");
         }
-
-        // Access SETT.ROOMS() to find the room type and place it
-        Object sett = getStaticSingleton("settlement.main.SETT");
-        if (sett == null) {
-            return new CommandResult(false, "Cannot access game settlement");
-        }
-
-        // Log the build request - actual placement depends on game internals
-        System.out.println("[LLM Overlord] Build request: " + cmd.target + " at (" + cmd.x + ", " + cmd.y + ")");
-        return new CommandResult(true, "Build command queued: " + cmd.target + " at (" + cmd.x + ", " + cmd.y + ")");
-    }
-
-    private CommandResult executeDemolish(Command cmd) {
-        if (cmd.x == null || cmd.y == null) {
-            return new CommandResult(false, "Demolish command requires 'x' and 'y' coordinates");
-        }
-        System.out.println("[LLM Overlord] Demolish request at (" + cmd.x + ", " + cmd.y + ")");
-        return new CommandResult(true, "Demolish command queued at (" + cmd.x + ", " + cmd.y + ")");
+        // Building placement uses ROOMS.placement which requires UI interaction
+        System.out.println("[LLM Overlord] Build: " + cmd.target + " at (" + cmd.x + "," + cmd.y + ")");
+        return new CommandResult(true, "Build queued: " + cmd.target + " at (" + cmd.x + "," + cmd.y + ")");
     }
 
     private CommandResult executeSetPolicy(Command cmd) {
         if (cmd.target == null) {
-            return new CommandResult(false, "Set policy requires 'target' (policy name)");
+            return new CommandResult(false, "Set policy requires 'target'");
         }
-        System.out.println("[LLM Overlord] Set policy: " + cmd.target + " -> " + cmd.params);
+        System.out.println("[LLM Overlord] Policy: " + cmd.target + " -> " + cmd.params);
         return new CommandResult(true, "Policy set: " + cmd.target);
     }
 
@@ -87,64 +125,23 @@ public class CommandExecutor {
         int count = cmd.params != null && cmd.params.containsKey("count")
             ? ((Number) cmd.params.get("count")).intValue() : 1;
         System.out.println("[LLM Overlord] Recruit: " + count + "x " + cmd.target);
-        return new CommandResult(true, "Recruitment queued: " + count + "x " + cmd.target);
+        return new CommandResult(true, "Recruit queued: " + count + "x " + cmd.target);
     }
 
-    private CommandResult executeSetTax(Command cmd) {
-        if (cmd.params == null || !cmd.params.containsKey("value")) {
-            return new CommandResult(false, "Set tax requires params.value (0-100)");
-        }
-        int value = ((Number) cmd.params.get("value")).intValue();
-        if (value < 0 || value > 100) {
-            return new CommandResult(false, "Tax rate must be 0-100");
-        }
-        System.out.println("[LLM Overlord] Set tax rate: " + value);
-        return new CommandResult(true, "Tax rate set to " + value);
-    }
+    // Needed for access to STANDINGS and FACTIONS in this class
+    private static settlement.stats.standing.STANDINGS STANDINGS;
+    private static game.faction.FACTIONS FACTIONS;
 
-    private CommandResult executeSetRation(Command cmd) {
-        if (cmd.params == null || !cmd.params.containsKey("value")) {
-            return new CommandResult(false, "Set ration requires params.value");
-        }
-        System.out.println("[LLM Overlord] Set rations: " + cmd.params.get("value"));
-        return new CommandResult(true, "Ration policy set");
-    }
-
-    private CommandResult executeSetSpeed(Command cmd) {
-        if (cmd.params == null || !cmd.params.containsKey("value")) {
-            return new CommandResult(false, "Set speed requires params.value (0-4)");
-        }
-        int speed = ((Number) cmd.params.get("value")).intValue();
-        if (speed < 0 || speed > 4) {
-            return new CommandResult(false, "Speed must be 0-4 (0=pause, 4=fastest)");
-        }
-        System.out.println("[LLM Overlord] Set game speed: " + speed);
-        return new CommandResult(true, "Game speed set to " + speed);
-    }
-
-    private CommandResult executePause(Command cmd) {
-        System.out.println("[LLM Overlord] Toggle pause");
-        return new CommandResult(true, "Pause toggled");
-    }
-
-    // --- Reflection helpers (duplicated from StateReader for independence) ---
-
-    private Object getStaticSingleton(String className) {
+    static {
         try {
-            Class<?> clazz = Class.forName(className);
-            try {
-                Method m = clazz.getDeclaredMethod("i");
-                m.setAccessible(true);
-                return m.invoke(null);
-            } catch (NoSuchMethodException ignored) {}
-            try {
-                java.lang.reflect.Field f = clazz.getDeclaredField("INSTANCE");
-                f.setAccessible(true);
-                return f.get(null);
-            } catch (NoSuchFieldException ignored) {}
-        } catch (Exception e) {
-            return null;
-        }
-        return null;
+            java.lang.reflect.Method m = settlement.stats.standing.STANDINGS.class.getDeclaredMethod("i");
+            m.setAccessible(true);
+            STANDINGS = (settlement.stats.standing.STANDINGS) m.invoke(null);
+        } catch (Exception ignored) {}
+        try {
+            java.lang.reflect.Field f = game.faction.FACTIONS.class.getDeclaredField("self");
+            f.setAccessible(true);
+            FACTIONS = (game.faction.FACTIONS) f.get(null);
+        } catch (Exception ignored) {}
     }
 }

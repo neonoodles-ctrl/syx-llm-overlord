@@ -1,258 +1,189 @@
 package syx.llm.overlord;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
+import game.GAME;
+import game.faction.FACTIONS;
+import game.faction.player.Player;
+import game.faction.FResources;
+import init.resources.RESOURCE;
+import init.resources.RESOURCES;
+import init.race.RACES;
+import init.race.Race;
+import settlement.main.SETT;
+import settlement.stats.STATS;
+import settlement.stats.standing.STANDINGS;
+import settlement.stats.standing.StandingCitizen;
+import settlement.stats.colls.StatsPopulation;
+import settlement.room.main.ROOMS;
+import settlement.army.ArmyManager;
+import settlement.army.div.Div;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.*;
 
 /**
- * Reads game state from Songs of Syx internal singletons via reflection.
+ * Reads real game state from Songs of Syx internal singletons.
  *
- * Key entry points:
- * - game.GAME        -> game instance
- * - settlement.main.SETT -> settlement data
- * - settlement.stats.STATS -> population, happiness stats
- * - game.faction.FACTIONS -> factions and diplomacy
+ * Access patterns (verified from SongsOfSyx.jar):
+ * - GAME.s() -> SETT
+ * - GAME.factions() -> FACTIONS
+ * - GAME.player() -> Player
+ * - STATS.POP() -> StatsPopulation
+ * - STANDINGS.CITIZEN() -> StandingCitizen
+ * - SETT.ROOMS() -> ROOMS
+ * - RESOURCES.ALL() -> LIST<RESOURCE>
  */
 public class StateReader {
-
-    private static final Gson GSON = new GsonBuilder().create();
 
     public GameState readState() {
         GameState state = new GameState();
         state.timestamp = System.currentTimeMillis();
 
-        try {
-            readPopulation(state);
-        } catch (Exception e) {
-            state.errors.add("population: " + e.getMessage());
-        }
-
-        try {
-            readResources(state);
-        } catch (Exception e) {
-            state.errors.add("resources: " + e.getMessage());
-        }
-
-        try {
-            readHappiness(state);
-        } catch (Exception e) {
-            state.errors.add("happiness: " + e.getMessage());
-        }
-
-        try {
-            readRooms(state);
-        } catch (Exception e) {
-            state.errors.add("rooms: " + e.getMessage());
-        }
-
-        try {
-            readMilitary(state);
-        } catch (Exception e) {
-            state.errors.add("military: " + e.getMessage());
-        }
-
-        try {
-            readDiplomacy(state);
-        } catch (Exception e) {
-            state.errors.add("diplomacy: " + e.getMessage());
-        }
-
-        try {
-            readTime(state);
-        } catch (Exception e) {
-            state.errors.add("time: " + e.getMessage());
-        }
+        readPopulation(state);
+        readHappiness(state);
+        readResources(state);
+        readMilitary(state);
+        readRooms(state);
+        readFactions(state);
+        readRaces(state);
 
         return state;
     }
 
-    private void readPopulation(GameState state) throws Exception {
-        // Access SETT.ROOMS().population or STATS for population data
-        Object sett = getStaticField("settlement.main.SETT", "INSTANCE");
-        if (sett == null) sett = getStaticSingleton("settlement.main.SETT");
-        if (sett == null) return;
+    private void readPopulation(GameState state) {
+        try {
+            StatsPopulation pop = STATS.POP();
+            if (pop == null) return;
 
-        // Try to get population stats
-        Object stats = getStaticField("settlement.stats.STATS", "INSTANCE");
-        if (stats == null) stats = getStaticSingleton("settlement.stats.STATS");
+            Map<String, Object> popMap = new LinkedHashMap<>();
+            // POP.data() returns history by race, get(null) = total
+            popMap.put("total", pop.POP.data().get(null));
 
-        if (stats != null) {
-            // Population count via reflection
-            Object pop = invokeMethod(stats, "pop");
-            if (pop != null) {
-                state.population = new HashMap<>();
-                state.population.put("total", getIntFromObject(pop, "size"));
-            }
+            state.population = popMap;
+        } catch (Exception e) {
+            state.errors.add("population: " + e.getMessage());
         }
     }
 
-    private void readResources(GameState state) throws Exception {
-        Object sett = getStaticSingleton("settlement.main.SETT");
-        if (sett == null) return;
+    private void readHappiness(GameState state) {
+        try {
+            StandingCitizen citizen = STANDINGS.CITIZEN();
+            if (citizen == null) return;
 
-        // Try STOCKPILE access
-        Object stockpile = invokeMethod(sett, "STOCKPILE");
-        if (stockpile == null) stockpile = invokeMethod(sett, "stockpile");
-        if (stockpile != null) {
-            state.resources = new HashMap<>();
-            // Read available resources - exact method depends on game version
-            Object all = invokeMethod(stockpile, "all");
-            if (all instanceof Map) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> resMap = (Map<String, Object>) all;
-                for (Map.Entry<String, Object> entry : resMap.entrySet()) {
-                    state.resources.put(entry.getKey(), getIntValue(entry.getValue()));
+            Race playerRace = GAME.player() != null ? GAME.player().race() : null;
+
+            Map<String, Object> happyMap = new LinkedHashMap<>();
+            happyMap.put("happiness", round(citizen.happiness.getD(playerRace)));
+            happyMap.put("loyalty", round(citizen.loyalty.getD(playerRace)));
+            happyMap.put("fulfillment", round(citizen.fullfillment.getD(playerRace)));
+            happyMap.put("expectation", round(citizen.expectation.getD(playerRace)));
+            happyMap.put("current", round(citizen.current()));
+            happyMap.put("target", round(citizen.target()));
+
+            state.happiness = happyMap;
+        } catch (Exception e) {
+            state.errors.add("happiness: " + e.getMessage());
+        }
+    }
+
+    private void readResources(GameState state) {
+        try {
+            Player player = GAME.player();
+            if (player == null) return;
+
+            FResources res = player.res();
+            if (res == null) return;
+
+            Map<String, Object> resMap = new LinkedHashMap<>();
+            for (RESOURCE r : RESOURCES.ALL()) {
+                int available = res.getAvailable(r);
+                if (available > 0) {
+                    resMap.put(r.key, available);
                 }
             }
-        }
-    }
 
-    private void readHappiness(GameState state) throws Exception {
-        Object stats = getStaticSingleton("settlement.stats.STATS");
-        if (stats == null) return;
-
-        state.happiness = new HashMap<>();
-        // Try standings/happiness access
-        Object standings = invokeMethod(stats, "STANDINGS");
-        if (standings == null) standings = invokeMethod(stats, "standings");
-        if (standings != null) {
-            // Read overall happiness
-            Object overall = invokeMethod(standings, "overall");
-            if (overall != null) {
-                state.happiness.put("overall", getDoubleValue(overall));
-            }
-        }
-    }
-
-    private void readRooms(GameState state) throws Exception {
-        Object sett = getStaticSingleton("settlement.main.SETT");
-        if (sett == null) return;
-
-        Object rooms = invokeMethod(sett, "ROOMS");
-        if (rooms == null) rooms = invokeMethod(sett, "rooms");
-        if (rooms != null) {
-            state.roomCounts = new HashMap<>();
-            // Try to enumerate room types and counts
-            Object all = invokeMethod(rooms, "all");
-            if (all instanceof Collection) {
-                state.roomCounts.put("total", ((Collection<?>) all).size());
-            }
-        }
-    }
-
-    private void readMilitary(GameState state) throws Exception {
-        Object sett = getStaticSingleton("settlement.main.SETT");
-        if (sett == null) return;
-
-        state.military = new HashMap<>();
-        // Military info via army/recruit systems
-        Object army = invokeMethod(sett, "ARMY");
-        if (army == null) army = invokeMethod(sett, "army");
-        if (army != null) {
-            Object divisions = invokeMethod(army, "divisions");
-            if (divisions instanceof Collection) {
-                state.military.put("divisions", ((Collection<?>) divisions).size());
-            }
-        }
-    }
-
-    private void readDiplomacy(GameState state) throws Exception {
-        Object factions = getStaticSingleton("game.faction.FACTIONS");
-        if (factions == null) return;
-
-        state.diplomacy = new HashMap<>();
-        Object player = invokeMethod(factions, "player");
-        if (player != null) {
-            state.diplomacy.put("player_faction", String.valueOf(player));
-        }
-    }
-
-    private void readTime(GameState state) throws Exception {
-        Object game = getStaticSingleton("game.GAME");
-        if (game == null) return;
-
-        state.gameTime = new HashMap<>();
-        // Try to read game time/day
-        Object time = invokeMethod(game, "time");
-        if (time != null) {
-            Object day = invokeMethod(time, "day");
-            Object year = invokeMethod(time, "year");
-            if (day != null) state.gameTime.put("day", getIntValue(day));
-            if (year != null) state.gameTime.put("year", getIntValue(year));
-        }
-    }
-
-    // --- Reflection helpers ---
-
-    private Object getStaticSingleton(String className) {
-        try {
-            Class<?> clazz = Class.forName(className);
-            // Try INSTANCE field
+            // Treasury/credits
             try {
-                Field f = clazz.getDeclaredField("INSTANCE");
-                f.setAccessible(true);
-                return f.get(null);
-            } catch (NoSuchFieldException ignored) {}
-            // Try i() method
-            try {
-                Method m = clazz.getDeclaredMethod("i");
-                m.setAccessible(true);
-                return m.invoke(null);
-            } catch (NoSuchMethodException ignored) {}
-            // Try getInstance()
-            try {
-                Method m = clazz.getDeclaredMethod("getInstance");
-                m.setAccessible(true);
-                return m.invoke(null);
-            } catch (NoSuchMethodException ignored) {}
+                resMap.put("credits", (int) player.credits().credits());
+            } catch (Exception ignored) {}
+
+            state.resources = resMap;
         } catch (Exception e) {
-            System.err.println("[LLM Overlord] Could not access " + className + ": " + e.getMessage());
+            state.errors.add("resources: " + e.getMessage());
         }
-        return null;
     }
 
-    private Object getStaticField(String className, String fieldName) {
+    private void readMilitary(GameState state) {
         try {
-            Class<?> clazz = Class.forName(className);
-            Field f = clazz.getDeclaredField(fieldName);
-            f.setAccessible(true);
-            return f.get(null);
+            ArmyManager army = SETT.ARMIES();
+            if (army == null) return;
+
+            Map<String, Object> milMap = new LinkedHashMap<>();
+            snake2d.util.sets.LIST<Div> divisions = army.divisions();
+            milMap.put("divisions", divisions.size());
+
+            int totalMen = 0;
+            for (int i = 0; i < divisions.size(); i++) {
+                totalMen += divisions.get(i).menNrOf();
+            }
+            milMap.put("total_soldiers", totalMen);
+
+            state.military = milMap;
         } catch (Exception e) {
-            return null;
+            state.errors.add("military: " + e.getMessage());
         }
     }
 
-    private Object invokeMethod(Object obj, String methodName) {
-        if (obj == null) return null;
+    private void readRooms(GameState state) {
         try {
-            Method m = obj.getClass().getDeclaredMethod(methodName);
-            m.setAccessible(true);
-            return m.invoke(obj);
+            ROOMS rooms = SETT.ROOMS();
+            if (rooms == null) return;
+
+            Map<String, Object> roomMap = new LinkedHashMap<>();
+            roomMap.put("stockpile_crates", rooms.STOCKPILE.crates());
+
+            state.roomCounts = roomMap;
         } catch (Exception e) {
-            return null;
+            state.errors.add("rooms: " + e.getMessage());
         }
     }
 
-    private int getIntFromObject(Object obj, String field) {
+    private void readFactions(GameState state) {
         try {
-            Field f = obj.getClass().getDeclaredField(field);
-            f.setAccessible(true);
-            return f.getInt(obj);
+            Map<String, Object> dipMap = new LinkedHashMap<>();
+
+            Player player = GAME.player();
+            if (player != null) {
+                dipMap.put("ruler", player.rulerName().toString());
+                dipMap.put("race", player.race().key);
+                dipMap.put("level", player.level());
+            }
+
+            dipMap.put("active_factions", FACTIONS.active().size());
+
+            state.diplomacy = dipMap;
         } catch (Exception e) {
-            return getIntValue(obj);
+            state.errors.add("diplomacy: " + e.getMessage());
         }
     }
 
-    private int getIntValue(Object obj) {
-        if (obj instanceof Number) return ((Number) obj).intValue();
-        return 0;
+    private void readRaces(GameState state) {
+        try {
+            List<String> races = new ArrayList<>();
+            snake2d.util.sets.LIST<Race> playable = RACES.playable();
+            for (int i = 0; i < playable.size(); i++) {
+                races.add(playable.get(i).key);
+            }
+            state.availableRaces = races;
+        } catch (Exception e) {
+            state.errors.add("races: " + e.getMessage());
+        }
     }
 
-    private double getDoubleValue(Object obj) {
-        if (obj instanceof Number) return ((Number) obj).doubleValue();
+    // --- Helpers ---
+
+    private double round(Object val) {
+        if (val instanceof Number) {
+            return Math.round(((Number) val).doubleValue() * 1000.0) / 1000.0;
+        }
         return 0.0;
     }
 }
