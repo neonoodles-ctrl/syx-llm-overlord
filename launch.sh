@@ -49,7 +49,7 @@ preflight() {
 install_deps() {
     if ! python3 -c "import fastapi" 2>/dev/null; then
         log "Installing Python dependencies..."
-        pip3 install -q -r "$BRIDGE_DIR/requirements.txt"
+        pip3 install --break-system-packages -q -r "$BRIDGE_DIR/requirements.txt"
         ok "Python deps installed."
     fi
 }
