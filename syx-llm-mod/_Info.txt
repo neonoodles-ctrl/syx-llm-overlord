@@ -1,0 +1,7 @@
+/------------------------------------------------------/
+VERSION: "1.0",
+NAME: "LLM Overlord",
+DESC: "HTTP API for LLM observation and control on port 47823.",
+AUTHOR: "llm-factory",
+INFO: "syx-llm-overlord",
+/------------------------------------------------------/

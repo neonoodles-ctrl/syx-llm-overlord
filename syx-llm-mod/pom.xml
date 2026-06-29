@@ -22,6 +22,9 @@
         <mod.author>llm-factory</mod.author>
         <!-- Path to SongsOfSyx.jar - adjust if your install differs -->
         <game.jar.path>${user.home}/GAMES/Steam/_steamapps/steamapps/common/Songs of Syx Demo/SongsOfSyx.jar</game.jar.path>
+        <game.script.dir>${user.home}/GAMES/Steam/_steamapps/steamapps/common/Songs of Syx Demo/base/script</game.script.dir>
+        <!-- Songs of Syx discovers scripts by NNN_Name.jar prefix -->
+        <mod.script.jar>002_LLM_Overlord.jar</mod.script.jar>
     </properties>
 
     <profiles>
@@ -88,7 +91,32 @@
                 </executions>
             </plugin>
 
-            <!-- Package mod -->
+            <!-- Package mod with Gson bundled (game has no Gson on classpath) -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals><goal>shade</goal></goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
@@ -104,14 +132,28 @@
                 </configuration>
             </plugin>
 
-            <!-- Copy to game mods folder -->
+            <!-- Copy mod metadata + script jar to user mods folder and base/script -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-resources-plugin</artifactId>
                 <version>3.3.1</version>
                 <executions>
                     <execution>
-                        <id>copy-mod</id>
+                        <id>copy-mod-info</id>
+                        <phase>install</phase>
+                        <goals><goal>copy-resources</goal></goals>
+                        <configuration>
+                            <outputDirectory>${game.mods.dir}/${mod.name}</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.basedir}</directory>
+                                    <includes><include>_Info.txt</include></includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>copy-mod-script-user</id>
                         <phase>install</phase>
                         <goals><goal>copy-resources</goal></goals>
                         <configuration>
@@ -119,11 +161,34 @@
                             <resources>
                                 <resource>
                                     <directory>${project.build.directory}</directory>
-                                    <includes>
-                                        <include>${mod.name}-${project.version}.jar</include>
-                                    </includes>
+                                    <includes><include>${mod.name}-${project.version}.jar</include></includes>
                                 </resource>
                             </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>rename-script-jars</id>
+                        <phase>install</phase>
+                        <goals><goal>run</goal></goals>
+                        <configuration>
+                            <target>
+                                <copy file="${project.build.directory}/${mod.name}-${project.version}.jar"
+                                      tofile="${game.mods.dir}/${mod.name}/${game.version.major}/script/${mod.script.jar}"
+                                      overwrite="true"/>
+                                <copy file="${project.build.directory}/${mod.name}-${project.version}.jar"
+                                      tofile="${game.script.dir}/${mod.script.jar}"
+                                      overwrite="true"/>
+                                <!-- Only ship the numbered script jar — duplicates crash script scanning -->
+                                <delete file="${game.mods.dir}/${mod.name}/${game.version.major}/script/${mod.name}-${project.version}.jar" quiet="true"/>
+                                <delete file="${game.script.dir}/${mod.name}-${project.version}.jar" quiet="true"/>
+                            </target>
                         </configuration>
                     </execution>
                 </executions>

@@ -5,13 +5,21 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 GAME_DIR="/home/hermesprime/GAMES/Steam/_steamapps/steamapps/common/Songs of Syx Demo"
+MOD_DIR="$HOME/.config/songsofsyx/mods/syx-llm-overlord"
+MOD_JAR="$MOD_DIR/V69/script/002_LLM_Overlord.jar"
+BASE_SCRIPT_JAR="$GAME_DIR/base/script/002_LLM_Overlord.jar"
 BRIDGE_DIR="$SCRIPT_DIR/bridge"
 CONFIG_FILE="$BRIDGE_DIR/config.yaml"
 MOD_API="http://localhost:47823"
 DASHBOARD_URL="http://localhost:3847"
+GAME_LOG="/tmp/syx-game.log"
 
-# Load API keys from hermes env
-[ -f "$HOME/.hermes/.env" ] && export $(grep -v '^#' "$HOME/.hermes/.env" | grep -v '^\s*$' | xargs)
+# Load only the API key we need (bulk export breaks on paths with spaces in .env)
+if [ -f "$HOME/.hermes/.env" ]; then
+    _or_key=$(grep -E '^OPENROUTER_API_KEY=' "$HOME/.hermes/.env" | tail -1 | cut -d= -f2-)
+    [ -n "$_or_key" ] && export OPENROUTER_API_KEY="$_or_key"
+    unset _or_key
+fi
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
 log()  { echo -e "${CYAN}[overlord]${NC} $1"; }
@@ -30,19 +38,28 @@ trap cleanup EXIT INT TERM
 
 # ── Pre-flight ──────────────────────────────────────────
 
+install_mod() {
+    if [ -f "$MOD_JAR" ] && [ -f "$MOD_DIR/_Info.txt" ] && [ -f "$BASE_SCRIPT_JAR" ]; then
+        ok "Mod installed: $MOD_JAR"
+        return 0
+    fi
+    warn "Mod not fully installed. Building now..."
+    (cd "$SCRIPT_DIR/syx-llm-mod" && ./mvnw install -P linux -q)
+    [ -f "$MOD_JAR" ] || { err "Mod build failed — missing $MOD_JAR"; exit 1; }
+    [ -f "$MOD_DIR/_Info.txt" ] || { err "Mod build failed — missing $MOD_DIR/_Info.txt"; exit 1; }
+    ok "Mod built and installed."
+}
+
 preflight() {
     local fail=0
-    command -v java &>/dev/null    || { err "java not found"; fail=1; }
     command -v python3 &>/dev/null || { err "python3 not found"; fail=1; }
     command -v curl &>/dev/null    || { err "curl not found"; fail=1; }
     [ -f "$GAME_DIR/SongsOfSyx.jar" ] || { err "Game not found: $GAME_DIR"; fail=1; }
-    [ -f "$HOME/.config/songsofsyx/mods/syx-llm-overlord/V69/script/syx-llm-overlord-1.0.0.jar" ] || {
-        warn "Mod not installed. Building now..."
-        (cd "$SCRIPT_DIR/syx-llm-mod" && ./mvnw install -P linux -q 2>&1 | tail -3)
-        ok "Mod built and installed."
-    }
+    [ -x "$GAME_DIR/LinuxNvidiaFix.sh" ] || { err "Game launcher missing: $GAME_DIR/LinuxNvidiaFix.sh"; fail=1; }
+    bash "$SCRIPT_DIR/scripts/fix-display.sh" >/dev/null 2>&1 || true
+    install_mod
     [ -f "$CONFIG_FILE" ] || cp "$BRIDGE_DIR/config.example.yaml" "$CONFIG_FILE"
-    [ -n "$OPENROUTER_API_KEY" ] || { err "OPENROUTER_API_KEY not set in ~/.hermes/.env"; fail=1; }
+    [ -n "$OPENROUTER_API_KEY" ] || { err "OPENROUTER_API_KEY not set in $HOME/.hermes/.env"; fail=1; }
     [ $fail -eq 0 ] || exit 1
 }
 
@@ -57,18 +74,21 @@ install_deps() {
 # ── Launch ──────────────────────────────────────────────
 
 launch_game() {
-    log "Launching Songs of Syx..."
+    log "Launching Songs of Syx (fullscreen, direct start)..."
     cd "$GAME_DIR"
-    java -Xmx1G -jar SongsOfSyx.jar &>/dev/null &
+    local CP="$GAME_DIR/base/script/000_Tutorial.jar:$GAME_DIR/base/script/001_Tutorial.jar:$GAME_DIR/base/script/002_LLM_Overlord.jar:$GAME_DIR/SongsOfSyx.jar"
+    __GL_THREADED_OPTIMIZATIONS=0 ./jre/bin/java \
+        -Xms512m -Xmx4096m -XX:+UseCompressedOops -Dfile.encoding=UTF-8 -server \
+        -cp "$CP" init.Main >>"$GAME_LOG" 2>&1 &
     PIDS+=($!)
-    ok "Game PID ${PIDS[-1]}"
+    ok "Game PID ${PIDS[-1]} (log: $GAME_LOG)"
     echo ""
-    echo -e "  ${YELLOW}>>> In the game launcher: enable 'LLM Overlord' in Scripts, then New Game <<<${NC}"
+    echo -e "  ${YELLOW}Required: New Game → Scripts → check \"LLM Overlord\" → Start${NC}"
     echo ""
 }
 
 wait_for_mod() {
-    log "Waiting for mod API (:47823)..."
+    log "Waiting for mod API (:47823) — start a new game with LLM Overlord enabled..."
     local dots=""
     for i in $(seq 1 120); do
         if curl -s --max-time 2 "$MOD_API/api/health" 2>/dev/null | grep -q "ok"; then
@@ -78,10 +98,12 @@ wait_for_mod() {
         fi
         sleep 5
         dots="${dots}."
-        printf "\r${CYAN}[overlord]${NC} Waiting%s " "$dots"
+        [ ${#dots} -gt 3 ] && dots="."
+        printf "\r${CYAN}[overlord]${NC} Waiting for you to start a game%s " "$dots"
     done
     echo ""
-    err "Mod API not responding. Did you enable the mod and start a game?"
+    err "Mod API not responding after 10 minutes."
+    err "Enable LLM Overlord in Mods + Scripts, then start a new game."
     exit 1
 }
 
@@ -92,7 +114,6 @@ launch_bridge() {
     PIDS+=($!)
     ok "Bridge PID ${PIDS[-1]}"
 
-    # Wait for bridge HTTP
     for i in $(seq 1 10); do
         if curl -s --max-time 2 "http://localhost:3847/api/health" 2>/dev/null | grep -q "ok"; then
             ok "Bridge API live on :3847"

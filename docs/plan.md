@@ -13,7 +13,7 @@
 ## Project Structure
 
 ```
-local-llm-game-factory/
+syx-llm-overlord/
 ├── README.md
 ├── .gitignore
 ├── syx-llm-mod/                        # Java mod (runs inside Songs of Syx)
