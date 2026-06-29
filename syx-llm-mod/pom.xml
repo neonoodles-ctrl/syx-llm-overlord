@@ -20,7 +20,7 @@
         <game.version.minor>0</game.version.minor>
         <mod.name>syx-llm-overlord</mod.name>
         <mod.author>llm-factory</mod.author>
-        <!-- Path to SongsOfSyx.jar - adjust if your install differs -->
+        <!-- Override at build: -Dgame.jar.path=... -Dgame.script.dir=... -Dgame.version.major=V69 -->
         <game.jar.path>${user.home}/GAMES/Steam/_steamapps/steamapps/common/Songs of Syx Demo/SongsOfSyx.jar</game.jar.path>
         <game.script.dir>${user.home}/GAMES/Steam/_steamapps/steamapps/common/Songs of Syx Demo/base/script</game.script.dir>
         <!-- Songs of Syx discovers scripts by NNN_Name.jar prefix -->
@@ -39,7 +39,7 @@
             <id>linux</id>
             <activation><os><family>unix</family></os></activation>
             <properties>
-                <game.mods.dir>${user.home}/.config/songsofsyx/mods</game.mods.dir>
+                <game.mods.dir>${user.home}/.local/share/songsofsyx/mods</game.mods.dir>
             </properties>
         </profile>
     </profiles>

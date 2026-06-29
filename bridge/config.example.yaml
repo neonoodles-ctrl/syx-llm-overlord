@@ -1,63 +1,39 @@
 # Syx LLM Overlord Configuration
 # Copy to config.yaml and fill in your settings.
 
+# ── Pick ONE provider block below ────────────────────────────────
+
+# LOCAL — Ollama (no API key, runs on your machine or LAN)
 llm:
-  # Provider: openai, anthropic, ollama, together, groq, openrouter, deepseek, fireworks, api
-  # 'api' = generic OpenAI-compatible endpoint (provide base_url + api_key)
-  provider: openai
-  model: gpt-4o
-  api_key: ${OPENAI_API_KEY}
-  base_url: null          # override provider default (required for 'api' provider)
+  provider: ollama
+  model: qwen2.5:14b
+  base_url: http://localhost:11434/v1
   max_tokens: 2048
   temperature: 0.7
 
-# ── Provider Quick-Reference ──────────────────────────────────────
-#
-# OpenAI:
+# CLOUD — OpenRouter (set OPENROUTER_API_KEY in .env)
+# llm:
+#   provider: openrouter
+#   model: openrouter/owl-alpha
+#   base_url: https://openrouter.ai/api/v1
+#   max_tokens: 2048
+#   temperature: 0.7
+
+# CLOUD — OpenAI (set OPENAI_API_KEY in .env)
+# llm:
 #   provider: openai
 #   model: gpt-4o
-#   api_key: sk-...
+#   api_key: ${OPENAI_API_KEY}
+#   max_tokens: 2048
+#   temperature: 0.7
+
+# ── Provider reference ───────────────────────────────────────────
 #
-# Anthropic:
-#   provider: anthropic
-#   model: claude-sonnet-4-20250514
-#   api_key: sk-ant-...
-#
-# Ollama (local):
-#   provider: ollama
-#   model: llama3
-#   # no api_key needed, runs on localhost:11434
-#
-# Together AI:
-#   provider: together
-#   model: meta-llama/Llama-3-70b-chat-hf
-#   api_key: ...
-#
-# Groq:
-#   provider: groq
-#   model: llama3-70b-8192
-#   api_key: gsk_...
-#
-# OpenRouter:
-#   provider: openrouter
-#   model: meta-llama/llama-3-70b-instruct
-#   api_key: sk-or-...
-#
-# DeepSeek:
-#   provider: deepseek
-#   model: deepseek-chat
-#   api_key: ...
-#
-# Fireworks:
-#   provider: fireworks
-#   model: accounts/fireworks/models/llama-v3-70b-instruct
-#   api_key: ...
-#
-# Generic OpenAI-compatible API:
-#   provider: api
-#   model: your-model-name
-#   api_key: your-key
-#   base_url: https://your-endpoint.com/v1
+# Anthropic: provider anthropic, pip install anthropic, ANTHROPIC_API_KEY
+# Together:  provider together, TOGETHER_API_KEY
+# Groq:      provider groq
+# DeepSeek:  provider deepseek
+# Generic:   provider api + base_url + api_key
 
 game:
   mod_url: http://localhost:47823
@@ -67,6 +43,16 @@ game:
 dashboard:
   port: 3847
   ws_enabled: true
+
+# Personality: peace_god | tyrant | gregg
+overlord:
+  personality: gregg
+
+# Optional path overrides (defaults: repo-root/wiki, repo-root/logs)
+# paths:
+#   wiki_dir: ../wiki
+#   memory_file: ../logs/overlord-memory.jsonl
+#   playbook: ../wiki/rules/playbook.md
 
 logging:
   level: INFO

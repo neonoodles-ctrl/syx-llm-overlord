@@ -3,17 +3,15 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
 
 from .config import LLMConfig
+from .personalities import get_personality, DEFAULT_PERSONALITY
+from .playbook import load_playbook
 from .models import GameState, LLMDecision, Command
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are an AI overlord controlling a fantasy city-state in Songs of Syx.
-You are a wise but unpredictable ruler. Your goal is to grow your civilization, keep your
-people happy, and defend against threats.
-
+_TICK_RULES = """
 IMPORTANT RULES:
 1. You receive game state as JSON. Analyze it carefully before deciding.
 2. You MUST respond with a valid JSON decision object (no markdown, no extra text).
@@ -37,13 +35,13 @@ Your response MUST be valid JSON with this structure:
 }
 
 Available actions:
-- build: Place a building. target=room type, x/y=coordinates
+- build: Place a building. target=room type (stockpile, home, well, farm, woodcutter, ...), x/y=coordinates near throne. Area rooms accept params.width and params.height (default 4).
 - demolish: Remove a building. x/y=coordinates
 - set_policy: Change a policy. target=policy name, params.value=new value
 - recruit: Recruit units. target=unit type, params.count=number
 - set_tax: Set tax rate. params.value=0-100
 - set_ration: Set food rations. params.value=ration level
-- set_speed: Set game speed. params.value=0-4 (0=pause, 4=fastest)
+- set_speed: Set game speed. params.value=0-4 (0=pause, 1=slow, 2=normal, 3=fast, 4=fastest)
 """
 
 USER_PROMPT_TEMPLATE = """Current game state:
@@ -56,16 +54,56 @@ Full state data:
 History of recent decisions (last 3):
 {recent_history}
 
+{user_orders}
+
+SESSION MEMORY (persistent log — do not repeat recorded failures):
+{session_memory}
+
 What is your next command? Respond with JSON only."""
+
+_CHAT_RULES = """
+Answer in plain text (2-5 sentences). Stay fully in character per your personality.
+- If they ask a question, answer using the game state and session memory provided.
+- If they ask about your wiki or playbook: YES — you have a local rules wiki (playbook) injected into every decision tick, plus a session memory log of failures and orders. You do NOT browse the web or external wikis; cite what you know from playbook + memory + current state.
+- If they give an order, acknowledge what you will prioritize on the next decision tick.
+- If they ask what you are doing or why something failed, explain using recent history and memory.
+- If they request an action that is not implemented (demolish, tax, policy, recruit, ration), say so and suggest build or set_speed instead.
+
+Do NOT output JSON. Do NOT use markdown code fences."""
+
+
+def _system_prompt(personality_id: str) -> str:
+    p = get_personality(personality_id)
+    return f"""You are an AI overlord controlling a fantasy city-state in Songs of Syx.
+Your goal is to grow your civilization, keep your people alive, and defend against threats.
+
+{p.tick_voice}
+
+{_TICK_RULES}
+
+""" + load_playbook()
+
+
+def _chat_system_prompt(personality_id: str) -> str:
+    p = get_personality(personality_id)
+    return f"""You are the ruler of a Songs of Syx settlement. The player is speaking to you directly.
+
+{p.chat_voice}
+
+{_CHAT_RULES}"""
 
 
 class LLMBrain:
     """Connects to an LLM and gets strategic decisions."""
 
-    def __init__(self, config: LLMConfig):
+    def __init__(self, config: LLMConfig, personality: str = DEFAULT_PERSONALITY):
         self.config = config
+        self.personality = get_personality(personality).id
         self._client = None
         self._init_client()
+
+    def set_personality(self, personality_id: str) -> None:
+        self.personality = get_personality(personality_id).id
 
     def _init_client(self):
         """Initialize the LLM client based on provider."""
@@ -75,19 +113,33 @@ class LLMBrain:
             from anthropic import Anthropic
             self._client = Anthropic(api_key=api_key)
         else:
-            # All other providers use the OpenAI-compatible SDK
             from openai import OpenAI
             kwargs = {"api_key": api_key}
             if base_url:
                 kwargs["base_url"] = base_url
-            self._client = OpenAI(**kwargs)
+            timeout = 180.0 if self.config.provider == "ollama" else 90.0
+            self._client = OpenAI(**kwargs, timeout=timeout)
 
-    def decide(self, state: GameState, recent_history: list[str] | None = None) -> LLMDecision:
+    def decide(
+        self,
+        state: GameState,
+        recent_history: list[str] | None = None,
+        user_orders: list[str] | None = None,
+        session_memory: str | None = None,
+    ) -> LLMDecision:
         """Get an LLM decision based on current game state."""
+        orders_block = ""
+        if user_orders:
+            orders_block = "DIRECT ORDERS FROM THE PLAYER (follow these):\n" + "\n".join(
+                f"- {o}" for o in user_orders
+            )
+
         user_prompt = USER_PROMPT_TEMPLATE.format(
             state_summary=state.summarize(),
             state_json=json.dumps(state.model_dump(), indent=2, default=str),
             recent_history="\n".join(recent_history[-3:]) if recent_history else "None yet",
+            user_orders=orders_block,
+            session_memory=session_memory or "No session memory yet.",
         )
 
         try:
@@ -103,11 +155,67 @@ class LLMBrain:
                 commands=[],
             )
 
+    def reply_to_user(
+        self,
+        message: str,
+        state: GameState | None,
+        session_memory: str | None = None,
+        recent_history: list[str] | None = None,
+    ) -> str:
+        """Plain-text reply when the player talks to the overlord."""
+        if state:
+            state_block = (
+                f"Current summary:\n{state.summarize()}\n\n"
+                f"Full state JSON:\n{json.dumps(state.model_dump(), indent=2, default=str)}"
+            )
+        else:
+            state_block = "Game state unavailable (mod API not connected). Answer from general knowledge and memory."
+
+        user_prompt = f"""Player message:
+{message.strip()}
+
+{state_block}
+
+Recent decision history:
+{chr(10).join(recent_history[-5:]) if recent_history else "None yet"}
+
+Session memory:
+{session_memory or "No session memory yet."}
+
+Local wiki / playbook (rules you follow each tick — summarize if asked):
+{load_playbook()[:3500]}
+
+Reply to the player now."""
+
+        chat_system = _chat_system_prompt(self.personality)
+        try:
+            if self.config.provider == "anthropic":
+                response = self._client.messages.create(
+                    model=self.config.model,
+                    max_tokens=min(512, self.config.max_tokens),
+                    system=chat_system,
+                    messages=[{"role": "user", "content": user_prompt}],
+                )
+                return (response.content[0].text or "").strip()
+            response = self._client.chat.completions.create(
+                model=self.config.model,
+                messages=[
+                    {"role": "system", "content": chat_system},
+                    {"role": "user", "content": user_prompt},
+                ],
+                max_tokens=min(512, self.config.max_tokens),
+                temperature=self.config.temperature,
+            )
+            return (response.choices[0].message.content or "").strip()
+        except Exception as e:
+            logger.error(f"LLM chat reply failed: {e}")
+            return f"I cannot reach my advisors right now ({e}). Try again in a moment."
+
     def _decide_openai(self, user_prompt: str) -> LLMDecision:
         response = self._client.chat.completions.create(
             model=self.config.model,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": _system_prompt(self.personality)},
                 {"role": "user", "content": user_prompt},
             ],
             max_tokens=self.config.max_tokens,
@@ -120,7 +228,7 @@ class LLMBrain:
         response = self._client.messages.create(
             model=self.config.model,
             max_tokens=self.config.max_tokens,
-            system=SYSTEM_PROMPT,
+            system=_system_prompt(self.personality),
             messages=[{"role": "user", "content": user_prompt}],
         )
         content = response.content[0].text
@@ -128,11 +236,9 @@ class LLMBrain:
 
     def _parse_decision(self, raw: str) -> LLMDecision:
         """Parse LLM response into a structured decision."""
-        # Strip markdown fences if present
         cleaned = raw.strip()
         if cleaned.startswith("```"):
             lines = cleaned.split("\n")
-            # Remove first and last fence lines
             lines = [l for l in lines if not l.strip().startswith("```")]
             cleaned = "\n".join(lines)
 

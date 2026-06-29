@@ -4,8 +4,24 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from dataclasses import dataclass, field
+from typing import Any
 
 import yaml
+
+from .personalities import DEFAULT_PERSONALITY, normalize_personality_id
+
+CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
+DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://10.0.10.151:11434/v1")
+DEFAULT_OPENROUTER_URL = "https://openrouter.ai/api/v1"
+
+
+def normalize_model_id(provider: str, model: str) -> str:
+    """Fix duplicated OpenRouter prefixes from dashboard display."""
+    model = (model or "").strip()
+    if provider == "openrouter":
+        while model.startswith("openrouter/openrouter/"):
+            model = model[len("openrouter/") :]
+    return model
 
 
 @dataclass
@@ -43,6 +59,9 @@ class LLMConfig:
         if self.provider == "ollama" and not key:
             key = "ollama"
 
+        if self.provider == "openrouter" and not key:
+            key = openrouter_api_key()
+
         return url, key
 
 
@@ -60,39 +79,46 @@ class DashboardConfig:
 
 
 @dataclass
+class OverlordConfig:
+    personality: str = DEFAULT_PERSONALITY
+
+
+@dataclass
 class Config:
     llm: LLMConfig = field(default_factory=LLMConfig)
     game: GameConfig = field(default_factory=GameConfig)
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
+    overlord: OverlordConfig = field(default_factory=OverlordConfig)
 
 
 def load_config(path: str | Path = "config.yaml") -> Config:
     """Load configuration from YAML file with env var substitution."""
     config_path = Path(path)
-    if not config_path.exists():
-        config_path = Path(__file__).parent.parent / "config.example.yaml"
+    if path == "config.yaml" and CONFIG_PATH.exists():
+        config_path = CONFIG_PATH
+    elif not config_path.is_absolute() and not config_path.exists():
+        config_path = CONFIG_PATH if CONFIG_PATH.exists() else Path(__file__).parent.parent / "config.example.yaml"
 
-    if config_path.exists():
-        with open(config_path) as f:
-            raw = f.read()
-
-        # Substitute ${ENV_VAR} patterns
-        for key, value in os.environ.items():
-            raw = raw.replace(f"${{{key}}}", value)
-
-        data = yaml.safe_load(raw) or {}
-    else:
-        data = {}
+    data = load_config_file(config_path) if config_path.exists() else {}
 
     llm_data = data.get("llm", {})
     game_data = data.get("game", {})
     dash_data = data.get("dashboard", {})
+    overlord_data = data.get("overlord", {})
+    provider = llm_data.get("provider", "openai")
+    model = normalize_model_id(provider, llm_data.get("model", "gpt-4o"))
+    if provider == "openrouter":
+        api_key = llm_data.get("api_key") or os.environ.get("OPENROUTER_API_KEY", "")
+    elif provider == "ollama":
+        api_key = llm_data.get("api_key", "")
+    else:
+        api_key = llm_data.get("api_key") or os.environ.get("OPENAI_API_KEY", "")
 
     return Config(
         llm=LLMConfig(
-            provider=llm_data.get("provider", "openai"),
-            model=llm_data.get("model", "gpt-4o"),
-            api_key=llm_data.get("api_key", os.environ.get("OPENAI_API_KEY", "")),
+            provider=provider,
+            model=model,
+            api_key=api_key,
             base_url=llm_data.get("base_url"),
             max_tokens=llm_data.get("max_tokens", 2048),
             temperature=llm_data.get("temperature", 0.7),
@@ -106,4 +132,72 @@ def load_config(path: str | Path = "config.yaml") -> Config:
             port=dash_data.get("port", 3847),
             ws_enabled=dash_data.get("ws_enabled", True),
         ),
+        overlord=OverlordConfig(
+            personality=normalize_personality_id(
+                overlord_data.get("personality", DEFAULT_PERSONALITY)
+            ),
+        ),
     )
+
+
+def openrouter_api_key() -> str:
+    return os.environ.get("OPENROUTER_API_KEY", "")
+
+
+def ollama_request_timeout() -> float:
+    return 180.0
+
+
+def ollama_native_url(base_url: str | None = None) -> str:
+    """Ollama REST root (no /v1) for /api/tags etc."""
+    url = (base_url or DEFAULT_OLLAMA_URL).rstrip("/")
+    if url.endswith("/v1"):
+        url = url[:-3]
+    return url.rstrip("/")
+
+
+def load_config_file(path: Path | None = None) -> dict[str, Any]:
+    config_path = path or CONFIG_PATH
+    if not config_path.exists():
+        config_path = Path(__file__).parent.parent / "config.example.yaml"
+    if not config_path.exists():
+        return {}
+    raw = config_path.read_text()
+    for key, value in os.environ.items():
+        raw = raw.replace(f"${{{key}}}", value)
+    return yaml.safe_load(raw) or {}
+
+
+def save_llm_settings(
+    *,
+    provider: str,
+    model: str,
+    base_url: str | None = None,
+    path: Path | None = None,
+) -> None:
+    config_path = path or CONFIG_PATH
+    data = load_config_file(config_path) if config_path.exists() else {}
+    llm = data.setdefault("llm", {})
+    llm["provider"] = provider
+    llm["model"] = normalize_model_id(provider, model)
+    if base_url is not None:
+        llm["base_url"] = base_url
+    if provider == "ollama":
+        llm.pop("api_key", None)
+    elif provider == "openrouter":
+        llm.pop("api_key", None)  # key lives in OPENROUTER_API_KEY env only
+        if base_url is None:
+            llm["base_url"] = DEFAULT_OPENROUTER_URL
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(config_path, "w") as f:
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+
+def save_personality_settings(*, personality: str, path: Path | None = None) -> None:
+    config_path = path or CONFIG_PATH
+    data = load_config_file(config_path) if config_path.exists() else {}
+    overlord = data.setdefault("overlord", {})
+    overlord["personality"] = normalize_personality_id(personality)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(config_path, "w") as f:
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)

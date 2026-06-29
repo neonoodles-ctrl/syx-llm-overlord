@@ -1,6 +1,7 @@
 package syx.llm.overlord;
 
 import game.GAME;
+import game.GameSpeed;
 import game.faction.player.Player;
 import settlement.main.SETT;
 import settlement.stats.STATS;
@@ -36,6 +37,7 @@ public class CommandExecutor {
             return switch (cmd.action) {
                 case "info" -> executeInfo(cmd);
                 case "set_speed" -> executeSetSpeed(cmd);
+                case "pause" -> executePause(cmd);
                 case "set_tax" -> executeSetTax(cmd);
                 case "build" -> executeBuild(cmd);
                 case "set_policy" -> executeSetPolicy(cmd);
@@ -62,25 +64,29 @@ public class CommandExecutor {
     }
 
     private CommandResult executeSetSpeed(Command cmd) {
-        // Game speed is controlled via GAME.SPEED
         if (cmd.params == null || !cmd.params.containsKey("value")) {
             return new CommandResult(false, "Set speed requires params.value (0-4)");
         }
-        int speed = ((Number) cmd.params.get("value")).intValue();
-        if (speed < 0 || speed > 4) {
+        int level = ((Number) cmd.params.get("value")).intValue();
+        if (level < 0 || level > 4) {
             return new CommandResult(false, "Speed must be 0-4");
         }
-        // Speed control is via the game's UI system - we can set it via reflection
-        try {
-            game.GameSpeed gameSpeed = GAME.SPEED;
-            // The speed object has setter methods we can try
-            java.lang.reflect.Method setSpeed = gameSpeed.getClass().getMethod("set", int.class);
-            setSpeed.setAccessible(true);
-            setSpeed.invoke(gameSpeed, speed);
-            return new CommandResult(true, "Game speed set to " + speed);
-        } catch (Exception e) {
-            return new CommandResult(false, "Speed control unavailable: " + e.getMessage());
-        }
+        GameSpeed gameSpeed = GAME.SPEED;
+        double target = switch (level) {
+            case 0 -> gameSpeed.speed0;
+            case 1 -> gameSpeed.speed1;
+            case 2 -> gameSpeed.speed2;
+            case 3 -> gameSpeed.speed3;
+            case 4 -> gameSpeed.speed4;
+            default -> throw new IllegalArgumentException("Speed must be 0-4");
+        };
+        gameSpeed.speedSet(target);
+        return new CommandResult(true, "Game speed set to level " + level + " (" + target + "x)");
+    }
+
+    private CommandResult executePause(Command cmd) {
+        GAME.SPEED.speedSet(GAME.SPEED.speed0);
+        return new CommandResult(true, "Game paused");
     }
 
     private CommandResult executeSetTax(Command cmd) {
@@ -105,9 +111,7 @@ public class CommandExecutor {
         if (cmd.x == null || cmd.y == null) {
             return new CommandResult(false, "Build requires 'x' and 'y' coordinates");
         }
-        // Building placement uses ROOMS.placement which requires UI interaction
-        System.out.println("[LLM Overlord] Build: " + cmd.target + " at (" + cmd.x + "," + cmd.y + ")");
-        return new CommandResult(true, "Build queued: " + cmd.target + " at (" + cmd.x + "," + cmd.y + ")");
+        return RoomBuilder.build(cmd.target, cmd.x, cmd.y, cmd.params);
     }
 
     private CommandResult executeSetPolicy(Command cmd) {

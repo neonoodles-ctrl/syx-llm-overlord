@@ -16,6 +16,8 @@ class GameState(BaseModel):
     military: dict[str, Any] = Field(default_factory=dict)
     diplomacy: dict[str, Any] = Field(default_factory=dict)
     gameTime: dict[str, Any] = Field(default_factory=dict)
+    gameSpeed: dict[str, Any] = Field(default_factory=dict)
+    throne: dict[str, Any] = Field(default_factory=dict)
     errors: list[str] = Field(default_factory=list)
 
     def summarize(self) -> str:
@@ -23,6 +25,8 @@ class GameState(BaseModel):
         parts = []
         if self.gameTime:
             parts.append(f"Day {self.gameTime.get('day', '?')}, Year {self.gameTime.get('year', '?')}")
+        if self.throne:
+            parts.append(f"Throne at ({self.throne.get('x', '?')}, {self.throne.get('y', '?')}) — build within ~20 tiles")
         if self.population:
             parts.append(f"Population: {self.population.get('total', 'unknown')}")
         if self.happiness:

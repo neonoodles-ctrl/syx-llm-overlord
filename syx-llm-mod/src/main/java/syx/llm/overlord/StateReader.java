@@ -1,6 +1,7 @@
 package syx.llm.overlord;
 
 import game.GAME;
+import game.GameSpeed;
 import game.faction.FACTIONS;
 import game.faction.FResources;
 import game.faction.player.Player;
@@ -12,6 +13,7 @@ import settlement.army.ArmyManager;
 import settlement.army.div.Div;
 import settlement.main.SETT;
 import settlement.room.main.ROOMS;
+import settlement.room.main.throne.THRONE;
 import settlement.stats.STATS;
 import settlement.stats.colls.StatsPopulation;
 import settlement.stats.standing.STANDINGS;
@@ -31,6 +33,8 @@ public class StateReader {
         state.timestamp = System.currentTimeMillis();
 
         readGameTime(state);
+        readGameSpeed(state);
+        readThrone(state);
         readPopulation(state);
         readHappiness(state);
         readResources(state);
@@ -50,6 +54,30 @@ public class StateReader {
             state.gameTime = time;
         } catch (Exception e) {
             state.errors.add("gameTime: " + e.getMessage());
+        }
+    }
+
+    private void readGameSpeed(GameState state) {
+        try {
+            GameSpeed speed = GAME.SPEED;
+            Map<String, Double> speedMap = new LinkedHashMap<>();
+            speedMap.put("target", speed.speedTarget());
+            speedMap.put("actual", speed.speed());
+            speedMap.put("paused", speed.isPaused() ? 1.0 : 0.0);
+            state.gameSpeed = speedMap;
+        } catch (Exception e) {
+            state.errors.add("gameSpeed: " + e.getMessage());
+        }
+    }
+
+    private void readThrone(GameState state) {
+        try {
+            Map<String, Integer> throne = new LinkedHashMap<>();
+            throne.put("x", THRONE.coo().x());
+            throne.put("y", THRONE.coo().y());
+            state.throne = throne;
+        } catch (Exception e) {
+            state.errors.add("throne: " + e.getMessage());
         }
     }
 

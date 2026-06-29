@@ -1,130 +1,190 @@
 # Syx LLM Overlord
 
-Watch LLMs play Songs of Syx -- a fantasy city-builder with thousands of simulated citizens.
-
-## Architecture
+Watch an LLM rule your Songs of Syx settlement — reads game state, builds rooms, remembers failures, and **talks back** when you ask questions.
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                  Songs of Syx (Java)                 │
-│  ┌─────────────────────────────────────────────┐    │
-│  │         syx-llm-mod (Java Mod)              │    │
-│  │  ┌──────────┐  ┌──────────┐  ┌───────────┐ │    │
-│  │  │ State    │  │ Command  │  │ HTTP API  │ │    │
-│  │  │ Reader   │  │ Executor │  │ :47823    │ │    │
-│  │  └──────────┘  └──────────┘  └───────────┘ │    │
-│  └─────────────────────┬───────────────────────┘    │
-└────────────────────────┼────────────────────────────┘
-                         │ HTTP (localhost:47823)
-┌────────────────────────┼────────────────────────────┐
-│              Python Bridge Service                   │
-│  ┌──────────┐  ┌──────┴──────┐  ┌───────────────┐  │
-│  │ Game API │  │  LLM Brain  │  │ Command Queue │  │
-│  │ Client   │──│  (OpenAI)   │──│  & Validator  │  │
-│  └──────────┘  └─────────────┘  └───────────────┘  │
-│  ┌──────────────────────────────────────────────┐   │
-│  │          FastAPI Server :8472                 │   │
-│  └──────────────────────────────────────────────┘   │
-└─────────────────────┬───────────────────────────────┘
-                      │ WebSocket + REST
-┌─────────────────────┼───────────────────────────────┐
-│           Web Dashboard :3847                       │
-│  ┌─────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐  │
-│  │ Live    │ │ LLM      │ │ Command  │ │ Stats  │  │
-│  │ State   │ │ Thoughts │ │ History  │ │ Charts │  │
-│  └─────────┘ └──────────┘ └──────────┘ └────────┘  │
-└─────────────────────────────────────────────────────┘
+Game (Java mod :47823) → Python bridge (:3847) → Ollama local OR cloud API
+                              ↓
+                     Dashboard + wiki playbook
 ```
 
-## Components
+**Requires:** a copy of [Songs of Syx](https://store.steampowered.com/app/1162750/Songs_of_Syx/) (any recent version), Java 21, Python 3.11+.
 
-### 1. `syx-llm-mod/` -- Java Mod (runs inside the game)
-- Implements `script.SCRIPT` interface to hook into game lifecycle
-- Reads game state each tick: population, resources, happiness, rooms, military, diplomacy
-- Exposes HTTP API on `localhost:47823` using JDK's built-in `com.sun.net.httpserver`
-- Accepts commands: build, demolish, set_policy, recruit, trade, etc.
-- Thread-safe state snapshots via `synchronized` blocks
+---
 
-### 2. `bridge/` -- Python Bridge Service
-- FastAPI service on `localhost:8472`
-- Polls the mod's HTTP API for game state
-- Formats state into LLM prompts with game context
-- Sends to configurable LLM backend (OpenAI, Ollama, Anthropic)
-- Parses structured JSON commands from LLM responses
-- Validates and queues commands back to the mod
-- Rate-limits decisions (configurable tick interval)
-- Logs all LLM reasoning and decisions
-
-### 3. `dashboard/` -- Web Dashboard
-- Single-page app served by the bridge service
-- WebSocket for real-time updates
-- Shows: current game state, LLM reasoning, command history, population/resource charts
-- Dark fantasy theme matching the game's aesthetic
-
-## Quick Start
+## Quick start
 
 ```bash
-/home/hermesprime/GAMES/Neonoodles-ctrl/syx/syx
+git clone git@github.com:neonoodles-ctrl/syx-llm-overlord.git
+cd syx-llm-overlord
+
+cp .env.example .env          # add API key if using cloud models
+./install.sh                  # venv, build mod, write config
+./run.sh                      # start bridge → http://localhost:3847
 ```
 
-One launcher starts the game (HiDPI fix), waits for the LLM Overlord mod, runs the OpenRouter bridge, and opens the dashboard at http://localhost:3847.
+Launch **Songs of Syx** from Steam, enable the **LLM Overlord** mod, start a game, open the dashboard, and use **Talk to the Overlord**.
 
-In game (SOS Launcher window):
+---
 
-1. **Launch** — left button under the SONGS OF SYX title
-2. **LLM Overlord** — click in the mods list (should show **1** when selected; pre-enabled in settings)
-3. **Play** — top-right
+## Choose your LLM
 
-Then in the game main menu:
+### Option A — Local (Ollama)
 
-4. **play** — right-side menu
-5. **random game** — second section
-6. **go!** — bottom (LLM Overlord auto-loads; no Scripts checkbox needed)
+No API key. Runs on your machine or a LAN server.
 
-Dashboard opens at http://localhost:3847 once the mod API is live.
-
-Stop: `/home/hermesprime/GAMES/Neonoodles-ctrl/syx/scripts/stop-syx.sh`
-
-See `/home/hermesprime/GAMES/Neonoodles-ctrl/syx/README.md` for full docs.
-
-## Configuration
-
-Copy `bridge/config.example.yaml` to `bridge/config.yaml`:
+1. Install [Ollama](https://ollama.com/) and pull a model, e.g. `ollama pull qwen2.5:14b`
+2. Edit `bridge/config.yaml`:
 
 ```yaml
 llm:
-  provider: openai        # openai, ollama, anthropic
-  model: gpt-4o
-  api_key: ${OPENAI_API_KEY}
-  base_url: null          # for Ollama: http://localhost:11434/v1
-  max_tokens: 2048
-  temperature: 0.7
-
-game:
-  mod_url: http://localhost:47823
-  poll_interval_seconds: 5
-  command_rate_limit: 3   # max commands per tick
-
-dashboard:
-  port: 3847
-  ws_enabled: true
+  provider: ollama
+  model: qwen2.5:14b
+  base_url: http://localhost:11434/v1   # or http://YOUR_SERVER:11434/v1
 ```
 
-## LLM Command Format
+3. Dashboard → **Ollama** tab → **Wake / Load Model** if cold → **Apply**
 
-The LLM outputs structured JSON decisions:
+### Option B — Cloud API (OpenRouter, OpenAI, …)
 
-```json
-{
-  "reasoning": "Population is growing but food production is lagging. Need more farms.",
-  "mood": "cautious",
-  "commands": [
-    {"action": "build", "target": "room_farm", "x": 45, "y": 32, "params": {"size": "3x3"}},
-    {"action": "set_policy", "target": "food_rationing", "params": {"value": "normal"}}
-  ]
-}
+1. Copy `.env.example` → `.env`
+2. Set `OPENROUTER_API_KEY=sk-or-...` (or `OPENAI_API_KEY`, etc.)
+3. Edit `bridge/config.yaml`:
+
+```yaml
+llm:
+  provider: openrouter
+  model: openrouter/owl-alpha
 ```
+
+4. Dashboard → **OpenRouter** tab → pick model → **Apply**
+
+Other providers: see comments in `bridge/config.example.yaml` (Together, Groq, DeepSeek, generic OpenAI-compatible `api`).
+
+---
+
+## In-game setup
+
+The mod does **not** auto-start the game. After `./run.sh`:
+
+1. Open Songs of Syx launcher
+2. Click **Launch**
+3. Select mod **LLM Overlord** in the list
+4. **Play** → **random game** (or load a save) → **go!**
+5. When the mod API is live, the dashboard shows green status and ticks begin
+
+Mod HTTP API: `http://localhost:47823`  
+Dashboard: `http://localhost:3847`
+
+---
+
+## Talk to the overlord
+
+Use the dashboard **Talk to the Overlord** panel (not in-game chat):
+
+- **Questions** → immediate plain-text reply (“Why did the well fail?”)
+- **Orders** → reply + queued for the next decision tick (“Build homes near throne”)
+
+API: `POST /api/instruct` with `{"message": "..."}` → returns `{"reply": "..."}`.
+
+---
+
+## What works today
+
+| Action | Status |
+|--------|--------|
+| `build` | ✅ Real room placement via game API |
+| `set_speed` | ✅ Pause / slow / normal / fast |
+| `demolish`, `set_policy`, `recruit`, `set_tax`, `set_ration` | ⚠️ Stubbed — documented, not implemented |
+
+See `wiki/rules/commands.md` for details. We ship with stubs documented and will enable more over time.
+
+---
+
+## Wiki & memory
+
+| Path | Purpose |
+|------|---------|
+| `wiki/rules/playbook.md` | Strategy rules — injected every LLM tick |
+| `logs/overlord-memory.jsonl` | Session memory (failures, orders, chat) |
+| `wiki/memory/live-log.md` | Auto-updated mirror for Obsidian |
+
+Edit the playbook while the bridge runs — next tick picks up changes.
+
+Optional: open `wiki/` as an Obsidian vault folder.
+
+---
+
+## Game version
+
+`install.sh` auto-detects your game version folder (`V69`, `V70`, …) from installed mods or game files.
+
+Override manually:
+
+```bash
+export SYX_GAME_VERSION=V70
+export SONGSOFSYX_JAR=/path/to/SongsOfSyx.jar
+./install.sh
+```
+
+---
+
+## Commands
+
+```bash
+./install.sh          # first-time setup
+./run.sh              # mod check + bridge + instructions
+./run.sh build        # rebuild mod only
+./run.sh bridge       # bridge only
+
+# API examples
+curl -X POST http://localhost:3847/api/instruct \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"What should we build first?"}'
+
+curl -X POST http://localhost:3847/api/restart   # relaunch game (see scripts/restart-game-only.sh)
+```
+
+---
+
+## Personal launcher (optional)
+
+The repo ships a minimal `./run.sh`. For HiDPI fixes, monitor pinning, and one-command game+bridge, see **[docs/PERSONAL-LAUNCHER.md](docs/PERSONAL-LAUNCHER.md)**.
+
+---
+
+## Project layout
+
+```
+syx-llm-mod/     Java mod (HTTP API inside the game)
+bridge/          Python FastAPI + dashboard + LLM brain
+wiki/            Playbook and docs (Obsidian-friendly)
+scripts/         find-game-jar, detect version, restart game
+install.sh       First-time setup
+run.sh           Start bridge
+```
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| Dashboard red / no ticks | Load into a settlement; mod API only runs in-game |
+| `Game API unreachable` | Enable LLM Overlord mod; check `:47823` |
+| Builds at (0,0) | Throne coords missing — load save, check state panel |
+| TmpArea / PlacerItem crash | Restart game via dashboard; avoid spam-building same tile |
+| OpenRouter errors | Set `OPENROUTER_API_KEY` in `.env`, restart bridge |
+| Ollama timeout | Use **Wake / Load Model** in dashboard; check `base_url` |
+
+---
 
 ## License
 
-MIT
+MIT — Songs of Syx is a separate commercial product by Gamatron AB. You must own the game. The mod compiles against your local `SongsOfSyx.jar` at build time only.
+
+---
+
+## Publishing
+
+Repo target: `neonoodles-ctrl/syx-llm-overlord` (private until reviewed). See [docs/GITHUB.md](docs/GITHUB.md).
