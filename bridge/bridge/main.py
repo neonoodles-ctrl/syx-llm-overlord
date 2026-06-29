@@ -23,11 +23,14 @@ from .config import (
     openrouter_api_key,
     DEFAULT_OLLAMA_URL,
     DEFAULT_OPENROUTER_URL,
+    ollama_v1_url_from_config,
+    ollama_host_for_display,
     Config,
 )
 from .game_client import GameClient
 from .llm_brain import LLMBrain
 from .memory import OverlordMemory
+from .knowledge import OverlordKnowledge
 from .wiki_sync import sync_memory_to_wiki
 from .paths import restart_script_path, repo_root
 from .personalities import personality_choices, normalize_personality_id, get_personality
@@ -35,6 +38,27 @@ from .models import GameState, TickRecord, LLMDecision, CommandResult
 from . import dashboard as dash_module
 
 logger = logging.getLogger("syx-overlord")
+
+
+def format_openrouter_price_per_million(price: str | float | None) -> str | None:
+    """OpenRouter returns USD per token; format as USD per 1M tokens for display."""
+    if price is None:
+        return None
+    try:
+        per_token = float(price)
+    except (TypeError, ValueError):
+        return None
+    if per_token < 0:
+        return "varies"
+    if per_token == 0:
+        return "free"
+    per_m = per_token * 1_000_000
+    if per_m >= 1:
+        return f"${per_m:.2f}/M"
+    if per_m >= 0.01:
+        return f"${per_m:.3f}/M"
+    return f"${per_m:.4f}/M"
+
 
 # Global state for the decision loop
 config: Config | None = None
@@ -47,6 +71,7 @@ current_state: GameState | None = None
 user_orders: list[str] = []
 chat_log: list[dict] = []
 overlord_memory = OverlordMemory()
+overlord_knowledge = OverlordKnowledge()
 
 
 class LLMUpdateRequest(BaseModel):
@@ -66,6 +91,10 @@ class InstructRequest(BaseModel):
 
 
 class MemoryNoteRequest(BaseModel):
+    text: str
+
+
+class KnowledgeNoteRequest(BaseModel):
     text: str
 
 
@@ -107,6 +136,15 @@ async def lifespan(app: FastAPI):
     logger.info(f"Personality: {config.overlord.personality}")
     logger.info(f"Game API: {config.game.mod_url}")
     logger.info(f"Dashboard: http://localhost:{config.dashboard.port}")
+
+    if not overlord_knowledge.path.is_file() or not overlord_knowledge.snapshot()["blacklist_count"]:
+        failures = [
+            e for e in overlord_memory.entries(limit=500)
+            if e.get("kind") == "failure"
+        ]
+        if failures:
+            n = overlord_knowledge.import_failures_from_memory(failures)
+            logger.info(f"Knowledge backfill: imported {n} failures from session memory")
 
     running = True
     loop_task = asyncio.create_task(decision_loop())
@@ -164,11 +202,16 @@ async def decision_loop():
             # 2. Get LLM decision
             tick += 1
             mem_context = overlord_memory.for_prompt()
+            knowledge_context = overlord_knowledge.for_prompt()
             logger.info(f"Tick {tick}: Getting LLM decision...")
             decision = await asyncio.get_event_loop().run_in_executor(
                 None,
                 lambda: llm_brain.decide(
-                    state, recent_history, list(user_orders), mem_context
+                    state,
+                    recent_history,
+                    list(user_orders),
+                    mem_context,
+                    knowledge_context,
                 ),
             )
             logger.info(f"Tick {tick}: LLM mood={decision.mood}, commands={len(decision.commands)}")
@@ -216,14 +259,16 @@ async def decision_loop():
                 decision.reasoning,
                 [c.model_dump(exclude_none=True) for c in decision.commands],
                 [{"success": r.success, "message": r.message} for r in results],
+                knowledge=overlord_knowledge,
             )
             try:
                 sync_memory_to_wiki(
                     overlord_memory.entries(limit=200),
                     source_path=str(overlord_memory.path),
                 )
+                overlord_knowledge.sync_wiki()
             except OSError as e:
-                logger.warning(f"Wiki memory sync failed: {e}")
+                logger.warning(f"Wiki sync failed: {e}")
 
             # 5. Broadcast to dashboard
             await broadcast_ws({
@@ -288,13 +333,14 @@ async def post_instruction(body: InstructRequest):
         for r in tick_history[-5:]
     ]
     mem_context = overlord_memory.for_prompt()
+    knowledge_context = overlord_knowledge.for_prompt()
 
     reply = ""
     if llm_brain:
         reply = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: llm_brain.reply_to_user(
-                msg, current_state, mem_context, recent
+                msg, current_state, mem_context, knowledge_context, recent
             ),
         )
 
@@ -369,6 +415,23 @@ async def clear_memory():
     return {"success": True, "message": "Memory log cleared"}
 
 
+@app.get("/api/knowledge")
+async def get_knowledge():
+    return overlord_knowledge.snapshot()
+
+
+@app.post("/api/knowledge")
+async def add_knowledge_note(body: KnowledgeNoteRequest):
+    text = (body.text or "").strip()
+    if not text:
+        return {"success": False, "message": "Empty note"}
+    overlord_knowledge.record_fact(text)
+    overlord_knowledge.sync_wiki()
+    snap = overlord_knowledge.snapshot()
+    await broadcast_ws({"type": "knowledge", "snapshot": snap})
+    return {"success": True, "snapshot": snap}
+
+
 @app.post("/api/playbook/reload")
 async def reload_playbook():
     """Pick up Obsidian wiki playbook edits (re-read on next tick automatically)."""
@@ -387,23 +450,20 @@ async def reload_playbook():
 async def get_config():
     if config:
         or_key = openrouter_api_key()
-        ollama_v1 = (
-            config.llm.base_url
-            if config.llm.provider == "ollama" and config.llm.base_url
-            else DEFAULT_OLLAMA_URL
-        )
+        ollama_v1 = ollama_v1_url_from_config(config)
         return {
             "llm_provider": config.llm.provider,
             "llm_model": config.llm.model,
             "llm_base_url": config.llm.base_url or (
-                DEFAULT_OPENROUTER_URL if config.llm.provider == "openrouter" else ollama_v1
+                DEFAULT_OPENROUTER_URL if config.llm.provider == "openrouter" else (ollama_v1 or DEFAULT_OLLAMA_URL)
             ),
             "personality": config.overlord.personality,
             "personality_name": get_personality(config.overlord.personality).name,
             "personality_label": get_personality(config.overlord.personality).chat_label,
             "personalities": personality_choices(),
-            "ollama_url": ollama_native_url(ollama_v1),
-            "ollama_v1_url": ollama_v1,
+            "ollama_active": config.llm.provider == "ollama",
+            "ollama_url": ollama_host_for_display(config),
+            "ollama_v1_url": ollama_v1 or DEFAULT_OLLAMA_URL.rstrip("/"),
             "openrouter_url": DEFAULT_OPENROUTER_URL,
             "openrouter_configured": bool(or_key),
             "poll_interval": config.game.poll_interval_seconds,
@@ -414,13 +474,20 @@ async def get_config():
 
 @app.get("/api/ollama/models")
 async def list_ollama_models():
-    """Fetch model list from Unraid Ollama."""
+    """Fetch model list from Unraid Ollama — only when Ollama is the active provider."""
     import httpx
 
-    base = DEFAULT_OLLAMA_URL
-    if config and config.llm.base_url:
-        base = config.llm.base_url
-    url = f"{ollama_native_url(base)}/api/tags"
+    if not config or config.llm.provider != "ollama":
+        return {
+            "success": False,
+            "skipped": True,
+            "error": "Ollama is not active — Apply Ollama as provider first (keeps Unraid VRAM free while using OpenRouter).",
+            "models": [],
+        }
+    ollama_v1 = ollama_v1_url_from_config(config)
+    if not ollama_v1:
+        return {"success": False, "error": "Ollama URL not configured", "models": []}
+    url = f"{ollama_native_url(ollama_v1)}/api/tags"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(url)
@@ -472,11 +539,15 @@ async def list_openrouter_models():
             if not mid:
                 continue
             pricing = entry.get("pricing") or {}
+            prompt_raw = pricing.get("prompt")
+            completion_raw = pricing.get("completion")
             models.append({
                 "name": mid,
                 "context": entry.get("context_length"),
-                "prompt_price": pricing.get("prompt"),
-                "completion_price": pricing.get("completion"),
+                "prompt_price": prompt_raw,
+                "completion_price": completion_raw,
+                "prompt_price_label": format_openrouter_price_per_million(prompt_raw),
+                "completion_price_label": format_openrouter_price_per_million(completion_raw),
             })
         # Prefer free/cheap and common chat models near the top
         models.sort(key=lambda m: m["name"].lower())
@@ -488,14 +559,21 @@ async def list_openrouter_models():
 
 @app.post("/api/ollama/wake")
 async def wake_ollama(body: OllamaWakeRequest | None = None):
-    """Load/warm the Ollama model (Unraid may be cold or evicted from VRAM)."""
+    """Load/warm the Ollama model — only when Ollama is the active provider."""
     import httpx
 
-    model = (body.model if body and body.model else None) or (config.llm.model if config else "qwen3:14b")
-    base = DEFAULT_OLLAMA_URL
-    if config and config.llm.base_url:
-        base = config.llm.base_url
-    root = ollama_native_url(base)
+    if not config or config.llm.provider != "ollama":
+        return {
+            "success": False,
+            "skipped": True,
+            "error": "Ollama is not active — Apply Ollama as provider before Wake (loads VRAM on Unraid).",
+        }
+
+    model = (body.model if body and body.model else None) or config.llm.model
+    ollama_v1 = ollama_v1_url_from_config(config)
+    if not ollama_v1:
+        return {"success": False, "error": "Ollama URL not configured"}
+    root = ollama_native_url(ollama_v1)
     timeout = ollama_request_timeout()
 
     try:
@@ -507,7 +585,7 @@ async def wake_ollama(body: OllamaWakeRequest | None = None):
                 loaded = [m.get("name") for m in ps_resp.json().get("models", [])]
 
             # Warm via chat API (same path the brain uses)
-            chat_url = f"{base.rstrip('/')}/chat/completions"
+            chat_url = f"{ollama_v1.rstrip('/')}/chat/completions"
             t0 = datetime.now()
             resp = await client.post(
                 chat_url,

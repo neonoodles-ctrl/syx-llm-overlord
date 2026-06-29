@@ -56,20 +56,46 @@ History of recent decisions (last 3):
 
 {user_orders}
 
-SESSION MEMORY (persistent log — do not repeat recorded failures):
+SESSION MEMORY (this game only):
 {session_memory}
+
+PERSISTENT KNOWLEDGE (all prior games — obey blacklists):
+{persistent_knowledge}
 
 What is your next command? Respond with JSON only."""
 
 _CHAT_RULES = """
 Answer in plain text (2-5 sentences). Stay fully in character per your personality.
 - If they ask a question, answer using the game state and session memory provided.
-- If they ask about your wiki or playbook: YES — you have a local rules wiki (playbook) injected into every decision tick, plus a session memory log of failures and orders. You do NOT browse the web or external wikis; cite what you know from playbook + memory + current state.
+- If they ask about your wiki or playbook: YES — you have a local rules wiki (playbook) injected into every decision tick, plus session memory (this game) and persistent knowledge (learned across games). You do NOT browse the web or external wikis; cite what you know from playbook + memory + knowledge + current state.
 - If they give an order, acknowledge what you will prioritize on the next decision tick.
 - If they ask what you are doing or why something failed, explain using recent history and memory.
 - If they request an action that is not implemented (demolish, tax, policy, recruit, ration), say so and suggest build or set_speed instead.
 
 Do NOT output JSON. Do NOT use markdown code fences."""
+
+
+def _extract_openai_content(response) -> str:
+    """Return non-empty text from an OpenAI-compatible chat completion."""
+    if not getattr(response, "choices", None):
+        raise ValueError("LLM returned no choices")
+    message = response.choices[0].message
+    if message is None:
+        raise ValueError("LLM returned empty message")
+    content = message.content
+    if content is None or not str(content).strip():
+        raise ValueError("LLM returned empty content")
+    return str(content).strip()
+
+
+def _extract_anthropic_content(response) -> str:
+    """Return non-empty text from an Anthropic messages response."""
+    if not getattr(response, "content", None):
+        raise ValueError("LLM returned no content blocks")
+    text = response.content[0].text
+    if not text or not str(text).strip():
+        raise ValueError("LLM returned empty content")
+    return str(text).strip()
 
 
 def _system_prompt(personality_id: str) -> str:
@@ -126,6 +152,7 @@ class LLMBrain:
         recent_history: list[str] | None = None,
         user_orders: list[str] | None = None,
         session_memory: str | None = None,
+        persistent_knowledge: str | None = None,
     ) -> LLMDecision:
         """Get an LLM decision based on current game state."""
         orders_block = ""
@@ -140,6 +167,7 @@ class LLMBrain:
             recent_history="\n".join(recent_history[-3:]) if recent_history else "None yet",
             user_orders=orders_block,
             session_memory=session_memory or "No session memory yet.",
+            persistent_knowledge=persistent_knowledge or "No persistent knowledge yet.",
         )
 
         try:
@@ -160,6 +188,7 @@ class LLMBrain:
         message: str,
         state: GameState | None,
         session_memory: str | None = None,
+        persistent_knowledge: str | None = None,
         recent_history: list[str] | None = None,
     ) -> str:
         """Plain-text reply when the player talks to the overlord."""
@@ -179,8 +208,11 @@ class LLMBrain:
 Recent decision history:
 {chr(10).join(recent_history[-5:]) if recent_history else "None yet"}
 
-Session memory:
+Session memory (this game):
 {session_memory or "No session memory yet."}
+
+Persistent knowledge (learned across all games):
+{persistent_knowledge or "No persistent knowledge yet."}
 
 Local wiki / playbook (rules you follow each tick — summarize if asked):
 {load_playbook()[:3500]}
@@ -196,7 +228,7 @@ Reply to the player now."""
                     system=chat_system,
                     messages=[{"role": "user", "content": user_prompt}],
                 )
-                return (response.content[0].text or "").strip()
+                return _extract_anthropic_content(response)
             response = self._client.chat.completions.create(
                 model=self.config.model,
                 messages=[
@@ -206,7 +238,7 @@ Reply to the player now."""
                 max_tokens=min(512, self.config.max_tokens),
                 temperature=self.config.temperature,
             )
-            return (response.choices[0].message.content or "").strip()
+            return _extract_openai_content(response)
         except Exception as e:
             logger.error(f"LLM chat reply failed: {e}")
             return f"I cannot reach my advisors right now ({e}). Try again in a moment."
@@ -221,7 +253,7 @@ Reply to the player now."""
             max_tokens=self.config.max_tokens,
             temperature=self.config.temperature,
         )
-        content = response.choices[0].message.content
+        content = _extract_openai_content(response)
         return self._parse_decision(content)
 
     def _decide_anthropic(self, user_prompt: str) -> LLMDecision:
@@ -231,12 +263,18 @@ Reply to the player now."""
             system=_system_prompt(self.personality),
             messages=[{"role": "user", "content": user_prompt}],
         )
-        content = response.content[0].text
+        content = _extract_anthropic_content(response)
         return self._parse_decision(content)
 
-    def _parse_decision(self, raw: str) -> LLMDecision:
+    def _parse_decision(self, raw: str | None) -> LLMDecision:
         """Parse LLM response into a structured decision."""
-        cleaned = raw.strip()
+        if raw is None or not str(raw).strip():
+            return LLMDecision(
+                reasoning="LLM returned an empty response — retry next tick",
+                mood="confused",
+                commands=[],
+            )
+        cleaned = str(raw).strip()
         if cleaned.startswith("```"):
             lines = cleaned.split("\n")
             lines = [l for l in lines if not l.strip().startswith("```")]

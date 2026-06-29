@@ -1201,6 +1201,17 @@ function formatActiveModel(prov, model) {
   return prov + '/' + model;
 }
 
+function formatOpenRouterPrice(raw) {
+  const perToken = parseFloat(raw);
+  if (Number.isNaN(perToken)) return '';
+  if (perToken < 0) return 'varies';
+  if (perToken === 0) return 'free';
+  const perM = perToken * 1_000_000;
+  if (perM >= 1) return `$${perM.toFixed(2)}/M`;
+  if (perM >= 0.01) return `$${perM.toFixed(3)}/M`;
+  return `$${perM.toFixed(4)}/M`;
+}
+
 async function loadConfig() {
   try {
     const resp = await fetch('/api/config');
@@ -1262,11 +1273,11 @@ function renderConfigPanel(cfg) {
         </div>
         <select class="config-select" id="ollamaModelSelect"><option>Loading…</option></select>
         <div class="config-actions">
-          <button class="btn btn-wake" id="wakeBtn" onclick="wakeOllama()">Wake / Load Model</button>
+          <button class="btn btn-wake" id="wakeBtn" onclick="wakeOllama()"${prov === 'ollama' ? '' : ' disabled title="Apply Ollama provider first"'}>Wake / Load Model</button>
           <button class="btn" onclick="applyModel()">Apply</button>
           <button class="btn" onclick="refreshModels()">Refresh</button>
         </div>
-        <div class="config-hint" id="ollamaHint">Cold Unraid Ollama? Click Wake first (may take ~2 min).</div>
+        <div class="config-hint" id="ollamaHint">${prov === 'ollama' ? 'Cold Unraid Ollama? Click Wake first (may take ~2 min).' : 'OpenRouter active — Ollama on Unraid is not contacted until you Apply Ollama.'}</div>
       </div>
       <div class="provider-panel ${prov === 'openrouter' ? 'active' : ''}" id="panelOpenRouter">
         <div class="config-row" style="border:none;padding:4px 0;">
@@ -1313,10 +1324,26 @@ async function loadModelsForProvider(prov, selectedModel) {
 async function loadOllamaModels(selectedModel) {
   const select = document.getElementById('ollamaModelSelect');
   const hint = document.getElementById('ollamaHint');
+  const wakeBtn = document.getElementById('wakeBtn');
   if (!select) return;
+
+  if (cfgCache.llm_provider !== 'ollama') {
+    select.innerHTML = '<option value="">Apply Ollama provider to list models</option>';
+    if (hint) hint.textContent = 'OpenRouter is active — Unraid Ollama stays idle until you Apply Ollama.';
+    if (wakeBtn) wakeBtn.disabled = true;
+    return;
+  }
+  if (wakeBtn) wakeBtn.disabled = false;
+
   try {
     const resp = await fetch('/api/ollama/models');
     const data = await resp.json();
+    if (data.skipped) {
+      select.innerHTML = '<option value="">Apply Ollama provider first</option>';
+      if (hint) hint.textContent = data.error || 'Ollama not active';
+      if (wakeBtn) wakeBtn.disabled = true;
+      return;
+    }
     if (!data.success) {
       select.innerHTML = '<option value="">Ollama unreachable</option>';
       if (hint) hint.textContent = 'Error: ' + (data.error || 'cannot reach Ollama') + ' — try Wake after server is up';
@@ -1357,7 +1384,9 @@ async function loadOpenRouterModels(selectedModel) {
       return a.name.localeCompare(b.name);
     });
     select.innerHTML = sorted.slice(0, 80).map(m => {
-      const price = m.prompt_price ? ` $${m.prompt_price}/M` : '';
+      const label = m.prompt_price_label
+        || (m.prompt_price != null && String(m.prompt_price) !== '' ? formatOpenRouterPrice(m.prompt_price) : '');
+      const price = label ? ` (${label} in)` : '';
       const sel = norm(m.name) === selectedModel ? ' selected' : '';
       return `<option value="${m.name}"${sel}>${m.name}${price}</option>`;
     }).join('');
@@ -1374,6 +1403,10 @@ async function refreshModels() {
 }
 
 async function wakeOllama() {
+  if (cfgCache.llm_provider !== 'ollama') {
+    alert('Apply Ollama as the active provider first — Wake loads models into Unraid VRAM.');
+    return;
+  }
   const btn = document.getElementById('wakeBtn');
   const hint = document.getElementById('ollamaHint');
   const select = document.getElementById('ollamaModelSelect');
@@ -1444,7 +1477,7 @@ async function applyModel() {
 
   const cfg = cfgCache.llm_provider ? cfgCache : await (await fetch('/api/config')).json();
   const body = currentProvider === 'ollama'
-    ? { provider: 'ollama', model, base_url: cfg.ollama_v1_url || cfg.llm_base_url }
+    ? { provider: 'ollama', model, base_url: cfg.ollama_v1_url }
     : { provider: 'openrouter', model, base_url: cfg.openrouter_url || cfg.llm_base_url };
 
   const applyBtns = document.querySelectorAll('.config-actions .btn:not(.btn-wake)');

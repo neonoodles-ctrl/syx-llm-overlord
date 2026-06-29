@@ -156,6 +156,22 @@ def ollama_native_url(base_url: str | None = None) -> str:
     return url.rstrip("/")
 
 
+def ollama_v1_url_from_config(cfg: "Config | None" = None) -> str | None:
+    """Ollama OpenAI-compatible base URL — only when Ollama is the active provider."""
+    if not cfg or cfg.llm.provider != "ollama":
+        return None
+    if cfg.llm.base_url:
+        return cfg.llm.base_url.rstrip("/")
+    return DEFAULT_OLLAMA_URL.rstrip("/")
+
+
+def ollama_host_for_display(cfg: "Config | None" = None) -> str:
+    """Configured Ollama host for settings display (no API call)."""
+    if cfg and cfg.llm.provider == "ollama" and cfg.llm.base_url:
+        return ollama_native_url(cfg.llm.base_url)
+    return ollama_native_url(DEFAULT_OLLAMA_URL)
+
+
 def load_config_file(path: Path | None = None) -> dict[str, Any]:
     config_path = path or CONFIG_PATH
     if not config_path.exists():

@@ -58,6 +58,7 @@ class OverlordMemory:
         reasoning: str,
         commands: list[dict],
         results: list[dict],
+        knowledge: Any | None = None,
     ) -> None:
         """Record one decision cycle — failures are highlighted for learning."""
         throne_str = ""
@@ -91,6 +92,14 @@ class OverlordMemory:
                     tick=tick,
                     day=day,
                 )
+                if knowledge is not None:
+                    knowledge.record_failure(
+                        action=str(cmd.get("action") or "build"),
+                        target=cmd.get("target"),
+                        x=cmd.get("x"),
+                        y=cmd.get("y"),
+                        message=str(res.get("message") or ""),
+                    )
 
     def log_order(self, message: str) -> None:
         self.append(f"Player order: {message}", kind="order")

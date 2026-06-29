@@ -42,6 +42,19 @@ def memory_wiki_path() -> Path:
     )
 
 
+def knowledge_path() -> Path:
+    return Path(os.environ.get("SYX_KNOWLEDGE_PATH", logs_dir() / "overlord-knowledge.json"))
+
+
+def knowledge_wiki_path() -> Path:
+    return Path(
+        os.environ.get(
+            "SYX_KNOWLEDGE_WIKI_PATH",
+            wiki_dir() / "memory" / "knowledge.md",
+        )
+    )
+
+
 def restart_script_path() -> Path:
     if os.environ.get("SYX_RESTART_SCRIPT"):
         return Path(os.environ["SYX_RESTART_SCRIPT"])

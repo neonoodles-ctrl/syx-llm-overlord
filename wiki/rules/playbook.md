@@ -15,11 +15,17 @@ Follow until **population > 20**.
 ## Day 0 priorities (population = 0)
 
 1. Read throne position from state. All x/y in build commands must be near throne.
-2. Build **home** (alias: house, housing) — indoor room, attracts settlers. Try `throne.x+2`, `throne.y` or spiral offsets.
+2. Build **home** — indoor room, attracts settlers. Try `throne.x+2`, `throne.y` or spiral offsets.
 3. Build **farm** or **pasture** — outdoor food (farm = area, default 4×4).
-4. Build **well** — outdoor single tile; only one well until population grows. Needs clear outdoor tile.
-5. **Stockpile** is tricky — indoor area room; "insufficient Crates" means bad location or blocked tiles. Build home/farm first; retry stockpile elsewhere.
-6. Do **not** spam the same failed build 3+ times. Change room type or coordinates.
+4. Build **well** — outdoor single tile; only one well until population grows.
+5. **Stockpile** is tricky early — build home/farm first; retry elsewhere if crates fail.
+6. Do **not** spam the same failed build twice — change room type or coordinates.
+
+## Learning (not static rules)
+
+- **SESSION MEMORY** — failures and orders from *this* game.
+- **PERSISTENT KNOWLEDGE** — blacklisted coords and patterns learned across *all* games (auto-updated by the bridge). **Always read both before building.**
+- Never retry a blacklisted coordinate. If unsure, pick a new spot 10+ tiles from throne.
 
 ## Room types (target names)
 
@@ -28,7 +34,6 @@ Follow until **population > 20**.
 | Indoor area | stockpile, home |
 | Outdoor area | farm, pasture, orchard, woodcutter |
 | Outdoor single | well, fishery, hunter |
-| Logistics (later) | export, import, hauler, transport |
 
 ## Build command format
 
@@ -36,22 +41,7 @@ Follow until **population > 20**.
 {"action":"build","target":"home","x":386,"y":128,"params":{"width":4,"height":4}}
 ```
 
-- `x`, `y` required.
-- Area rooms: `params.width` / `params.height` (4–6 early game).
-
-## Reading failures
-
-See [[failures]] — failures are also logged to [[../memory/overview|session memory]].
-
-## Mid-game (population > 0)
-
-- Happiness: food (farm/pasture/fishery), water (well), housing (more homes).
-- Industry: woodcutter + mine when pop > 10.
-- **builder** room speeds construction.
-- tavern/market for happiness later.
-
 ## Strategy
 
 - One focused goal per tick. Max 2 build attempts + `set_speed`.
 - If last 3 ticks failed the same action, switch strategy entirely.
-- Prefer proven coordinates from **SESSION MEMORY** over guessing.
