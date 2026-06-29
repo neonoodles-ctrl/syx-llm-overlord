@@ -64,20 +64,28 @@ Watch LLMs play Songs of Syx -- a fantasy city-builder with thousands of simulat
 ## Quick Start
 
 ```bash
-# 1. Install Songs of Syx (Steam or itch.io)
-# 2. Build and install the Java mod
-cd syx-llm-mod && mvn install -P linux
-
-# 3. Start the Python bridge
-cd bridge && pip install -r requirements.txt
-python -m bridge.main
-
-# 4. Open dashboard
-# http://localhost:3847
-
-# 5. Launch Songs of Syx, enable "LLM Overlord" script, start a new game
-# The LLM will start making decisions automatically
+/home/hermesprime/GAMES/Neonoodles-ctrl/syx/syx
 ```
+
+One launcher starts the game (HiDPI fix), waits for the LLM Overlord mod, runs the OpenRouter bridge, and opens the dashboard at http://localhost:3847.
+
+In game (SOS Launcher window):
+
+1. **Launch** — left button under the SONGS OF SYX title
+2. **LLM Overlord** — click in the mods list (should show **1** when selected; pre-enabled in settings)
+3. **Play** — top-right
+
+Then in the game main menu:
+
+4. **play** — right-side menu
+5. **random game** — second section
+6. **go!** — bottom (LLM Overlord auto-loads; no Scripts checkbox needed)
+
+Dashboard opens at http://localhost:3847 once the mod API is live.
+
+Stop: `/home/hermesprime/GAMES/Neonoodles-ctrl/syx/scripts/stop-syx.sh`
+
+See `/home/hermesprime/GAMES/Neonoodles-ctrl/syx/README.md` for full docs.
 
 ## Configuration
 

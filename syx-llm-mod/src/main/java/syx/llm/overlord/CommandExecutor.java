@@ -52,7 +52,7 @@ public class CommandExecutor {
             StringBuilder sb = new StringBuilder();
             sb.append("Ruler: ").append(GAME.player().rulerName()).append("\n");
             sb.append("Race: ").append(GAME.player().race().key).append("\n");
-            sb.append("Population: ").append(STATS.POP().POP.data().get(null)).append("\n");
+            sb.append("Population: ").append(intFromPop()).append("\n");
             sb.append("Happiness: ").append(STANDINGS.CITIZEN().current()).append("\n");
             sb.append("Active factions: ").append(FACTIONS.active().size());
             return new CommandResult(true, sb.toString());
@@ -126,6 +126,17 @@ public class CommandExecutor {
             ? ((Number) cmd.params.get("count")).intValue() : 1;
         System.out.println("[LLM Overlord] Recruit: " + count + "x " + cmd.target);
         return new CommandResult(true, "Recruit queued: " + count + "x " + cmd.target);
+    }
+
+    private int intFromPop() {
+        try {
+            Object raw = STATS.POP().POP.data().get(null);
+            if (raw instanceof util.data.INT) {
+                return ((util.data.INT) raw).get();
+            }
+        } catch (Exception ignored) {
+        }
+        return 0;
     }
 
     // Needed for access to STANDINGS and FACTIONS in this class

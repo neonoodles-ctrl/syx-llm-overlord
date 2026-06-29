@@ -29,6 +29,11 @@ public class LlmOverlordScript implements SCRIPT {
 
     @Override
     public boolean isSelectable() {
+        return false;
+    }
+
+    @Override
+    public boolean forceInit() {
         return true;
     }
 }
