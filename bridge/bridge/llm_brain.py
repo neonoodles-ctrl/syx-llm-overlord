@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from .config import LLMConfig
 from .personalities import get_personality, DEFAULT_PERSONALITY
-from .playbook import load_playbook
+from .playbook import load_playbook, load_mode_context
 from .models import GameState, LLMDecision, Command
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ Your response MUST be valid JSON with this structure:
   "mood": "one of: confident, cautious, aggressive, worried, pleased, frustrated",
   "commands": [
     {
-      "action": "build|demolish|set_policy|recruit|set_tax|set_ration|set_speed",
+      "action": "build|clear_placement|set_speed",
       "target": "description of what to build/affect",
       "x": null,
       "y": null,
@@ -36,7 +37,8 @@ Your response MUST be valid JSON with this structure:
 
 Available actions:
 - build: Place a building. target=room type (stockpile, home, well, farm, woodcutter, ...), x/y=coordinates near throne. Area rooms accept params.width and params.height (default 4).
-- demolish: Remove a building. x/y=coordinates
+- clear_placement: Clear TmpArea/placer ghost locks after collision spam (no x/y needed). Use when builds fail with TmpArea errors.
+- demolish: NOT implemented — do not use
 - set_policy: Change a policy. target=policy name, params.value=new value
 - recruit: Recruit units. target=unit type, params.count=number
 - set_tax: Set tax rate. params.value=0-100
@@ -56,11 +58,15 @@ History of recent decisions (last 3):
 
 {user_orders}
 
+{map_pins}
+
 SESSION MEMORY (this game only):
 {session_memory}
 
 PERSISTENT KNOWLEDGE (all prior games — obey blacklists):
 {persistent_knowledge}
+
+{vision_note}
 
 What is your next command? Respond with JSON only."""
 
@@ -98,8 +104,52 @@ def _extract_anthropic_content(response) -> str:
     return str(text).strip()
 
 
+def _strip_markdown_fence(raw: str) -> str:
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.split("\n")
+        lines = [ln for ln in lines if not ln.strip().startswith("```")]
+        cleaned = "\n".join(lines)
+    return cleaned.strip()
+
+
+def _extract_json_object(raw: str) -> str:
+    """Best-effort extract a JSON object from noisy LLM output."""
+    cleaned = _strip_markdown_fence(raw)
+    try:
+        json.loads(cleaned)
+        return cleaned
+    except json.JSONDecodeError:
+        pass
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start >= 0 and end > start:
+        return cleaned[start : end + 1]
+    return cleaned
+
+
+def _repair_json(raw: str) -> str:
+    """Remove trailing commas and control chars that break json.loads."""
+    text = _extract_json_object(raw)
+    text = re.sub(r",\s*([}\]])", r"\1", text)
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", text)
+    return text
+
+
+def _is_retriable_llm_error(exc: Exception) -> bool:
+    err = str(exc).lower()
+    for code in ("400", "401", "429", "502", "503", "504"):
+        if code in err:
+            return True
+    for phrase in ("connection error", "no choices", "empty content", "timeout"):
+        if phrase in err:
+            return True
+    return False
+
+
 def _system_prompt(personality_id: str) -> str:
     p = get_personality(personality_id)
+    mode_block = load_mode_context(personality_id)
     return f"""You are an AI overlord controlling a fantasy city-state in Songs of Syx.
 Your goal is to grow your civilization, keep your people alive, and defend against threats.
 
@@ -107,16 +157,17 @@ Your goal is to grow your civilization, keep your people alive, and defend again
 
 {_TICK_RULES}
 
-""" + load_playbook()
+""" + load_playbook() + mode_block
 
 
 def _chat_system_prompt(personality_id: str) -> str:
     p = get_personality(personality_id)
+    mode_block = load_mode_context(personality_id)
     return f"""You are the ruler of a Songs of Syx settlement. The player is speaking to you directly.
 
 {p.chat_voice}
 
-{_CHAT_RULES}"""
+{_CHAT_RULES}""" + (f"\n\n{mode_block}" if mode_block else "")
 
 
 class LLMBrain:
@@ -151,8 +202,11 @@ class LLMBrain:
         state: GameState,
         recent_history: list[str] | None = None,
         user_orders: list[str] | None = None,
+        map_pins: str | None = None,
         session_memory: str | None = None,
         persistent_knowledge: str | None = None,
+        screenshot_b64: str | None = None,
+        vision_model: str | None = None,
     ) -> LLMDecision:
         """Get an LLM decision based on current game state."""
         orders_block = ""
@@ -161,20 +215,40 @@ class LLMBrain:
                 f"- {o}" for o in user_orders
             )
 
+        if screenshot_b64:
+            vision_note = (
+                "VISION: A settlement screenshot is attached to this request. "
+                "Use it to see buildings, terrain, water, trees, and open tiles. "
+                "Cross-check throne coords from JSON with what you see."
+            )
+        else:
+            vision_note = (
+                "MAP: ASCII tile grid is in state summary (if exported by mod). "
+                "You cannot see pixels unless a screenshot is attached. "
+                "Use mapRows + throne coords + memory for placement."
+            )
+
         user_prompt = USER_PROMPT_TEMPLATE.format(
             state_summary=state.summarize(),
             state_json=json.dumps(state.model_dump(), indent=2, default=str),
             recent_history="\n".join(recent_history[-3:]) if recent_history else "None yet",
             user_orders=orders_block,
+            map_pins=map_pins or "",
             session_memory=session_memory or "No session memory yet.",
             persistent_knowledge=persistent_knowledge or "No persistent knowledge yet.",
+            vision_note=vision_note,
         )
 
         try:
+            if screenshot_b64:
+                model = vision_model or self.config.fallback_model or self.config.model
+                try:
+                    return self._decide_openai_vision(user_prompt, screenshot_b64, model=model)
+                except Exception as ve:
+                    logger.warning(f"Vision tick failed ({ve}); falling back to text-only decision")
             if self.config.provider == "anthropic":
                 return self._decide_anthropic(user_prompt)
-            else:
-                return self._decide_openai(user_prompt)
+            return self._decide_openai_with_fallback(user_prompt)
         except Exception as e:
             logger.error(f"LLM decision failed: {e}")
             return LLMDecision(
@@ -190,6 +264,8 @@ class LLMBrain:
         session_memory: str | None = None,
         persistent_knowledge: str | None = None,
         recent_history: list[str] | None = None,
+        screenshot_b64: str | None = None,
+        vision_model: str | None = None,
     ) -> str:
         """Plain-text reply when the player talks to the overlord."""
         if state:
@@ -200,9 +276,16 @@ class LLMBrain:
         else:
             state_block = "Game state unavailable (mod API not connected). Answer from general knowledge and memory."
 
+        vision_line = ""
+        if screenshot_b64:
+            vision_line = (
+                "\nThe player attached a settlement screenshot — describe what you see "
+                "(buildings, terrain, water, problems) and answer their message.\n"
+            )
+
         user_prompt = f"""Player message:
 {message.strip()}
-
+{vision_line}
 {state_block}
 
 Recent decision history:
@@ -221,6 +304,50 @@ Reply to the player now."""
 
         chat_system = _chat_system_prompt(self.personality)
         try:
+            if screenshot_b64:
+                model = vision_model or self.config.fallback_model or self.config.model
+                if self.config.provider == "anthropic":
+                    response = self._client.messages.create(
+                        model=self.config.model,
+                        max_tokens=min(512, self.config.max_tokens),
+                        system=chat_system,
+                        messages=[{
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": user_prompt},
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": "image/png",
+                                        "data": screenshot_b64,
+                                    },
+                                },
+                            ],
+                        }],
+                    )
+                    return _extract_anthropic_content(response)
+                response = self._client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": chat_system},
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": user_prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/png;base64,{screenshot_b64}",
+                                    },
+                                },
+                            ],
+                        },
+                    ],
+                    max_tokens=min(512, self.config.max_tokens),
+                    temperature=self.config.temperature,
+                )
+                return _extract_openai_content(response)
             if self.config.provider == "anthropic":
                 response = self._client.messages.create(
                     model=self.config.model,
@@ -243,17 +370,112 @@ Reply to the player now."""
             logger.error(f"LLM chat reply failed: {e}")
             return f"I cannot reach my advisors right now ({e}). Try again in a moment."
 
-    def _decide_openai(self, user_prompt: str) -> LLMDecision:
-        response = self._client.chat.completions.create(
-            model=self.config.model,
-            messages=[
-                {"role": "system", "content": _system_prompt(self.personality)},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=self.config.max_tokens,
-            temperature=self.config.temperature,
-        )
+    def _decide_openai_with_fallback(self, user_prompt: str) -> LLMDecision:
+        try:
+            return self._decide_openai(user_prompt, model=self.config.model)
+        except Exception as e:
+            fb = self.config.fallback_model
+            if (
+                not fb
+                or fb == self.config.model
+                or self.config.provider != "openrouter"
+                or not _is_retriable_llm_error(e)
+            ):
+                raise
+            logger.warning(
+                f"Primary model {self.config.model} failed ({e}); "
+                f"retrying with fallback {fb}"
+            )
+            return self._decide_openai(user_prompt, model=fb)
+
+    def _decide_openai(self, user_prompt: str, *, model: str | None = None) -> LLMDecision:
+        model = model or self.config.model
+        messages = [
+            {"role": "system", "content": _system_prompt(self.personality)},
+            {"role": "user", "content": user_prompt},
+        ]
+        kwargs: dict = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": self.config.max_tokens,
+            "temperature": self.config.temperature,
+        }
+        try:
+            response = self._client.chat.completions.create(
+                **kwargs,
+                response_format={"type": "json_object"},
+            )
+        except Exception as e:
+            err = str(e).lower()
+            if "response_format" in err or "json_object" in err or "400" in err:
+                response = self._client.chat.completions.create(**kwargs)
+            else:
+                raise
         content = _extract_openai_content(response)
+        return self._parse_decision(content)
+
+    def _decide_openai_vision(
+        self,
+        user_prompt: str,
+        screenshot_b64: str,
+        *,
+        model: str,
+    ) -> LLMDecision:
+        content_parts = [
+            {"type": "text", "text": user_prompt},
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"},
+            },
+        ]
+        messages = [
+            {"role": "system", "content": _system_prompt(self.personality)},
+            {"role": "user", "content": content_parts},
+        ]
+        try:
+            response = self._client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=self.config.max_tokens,
+                temperature=self.config.temperature,
+            )
+        except Exception as e:
+            if not _is_retriable_llm_error(e):
+                raise
+            fb = self.config.fallback_model
+            if not fb or fb == model:
+                raise
+            logger.warning(f"Vision model {model} failed ({e}); retry {fb}")
+            response = self._client.chat.completions.create(
+                model=fb,
+                messages=messages,
+                max_tokens=self.config.max_tokens,
+                temperature=self.config.temperature,
+            )
+        content = _extract_openai_content(response)
+        return self._parse_decision(content)
+
+    def _decide_anthropic_vision(self, user_prompt: str, screenshot_b64: str) -> LLMDecision:
+        response = self._client.messages.create(
+            model=self.config.model,
+            max_tokens=self.config.max_tokens,
+            system=_system_prompt(self.personality),
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": user_prompt},
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": screenshot_b64,
+                        },
+                    },
+                ],
+            }],
+        )
+        content = _extract_anthropic_content(response)
         return self._parse_decision(content)
 
     def _decide_anthropic(self, user_prompt: str) -> LLMDecision:
@@ -274,25 +496,37 @@ Reply to the player now."""
                 mood="confused",
                 commands=[],
             )
-        cleaned = str(raw).strip()
-        if cleaned.startswith("```"):
-            lines = cleaned.split("\n")
-            lines = [l for l in lines if not l.strip().startswith("```")]
-            cleaned = "\n".join(lines)
+
+        cleaned = _repair_json(str(raw))
+        data = None
+        last_err: Exception | None = None
+        for attempt in (cleaned, _extract_json_object(str(raw))):
+            try:
+                data = json.loads(attempt)
+                break
+            except json.JSONDecodeError as e:
+                last_err = e
+
+        if data is None:
+            logger.warning(f"Failed to parse LLM response as JSON: {last_err}")
+            logger.debug(f"Raw response: {raw}")
+            return LLMDecision(
+                reasoning=f"Failed to parse decision: {str(raw)[:200]}",
+                mood="confused",
+                commands=[],
+            )
 
         try:
-            data = json.loads(cleaned)
             commands = [Command(**c) for c in data.get("commands", [])]
             return LLMDecision(
                 reasoning=data.get("reasoning", "No reasoning provided"),
                 mood=data.get("mood", "neutral"),
                 commands=commands,
             )
-        except (json.JSONDecodeError, Exception) as e:
-            logger.warning(f"Failed to parse LLM response as JSON: {e}")
-            logger.debug(f"Raw response: {raw}")
+        except Exception as e:
+            logger.warning(f"Failed to build decision from JSON: {e}")
             return LLMDecision(
-                reasoning=f"Failed to parse decision: {raw[:200]}",
+                reasoning=f"Failed to parse decision: {str(raw)[:200]}",
                 mood="confused",
                 commands=[],
             )

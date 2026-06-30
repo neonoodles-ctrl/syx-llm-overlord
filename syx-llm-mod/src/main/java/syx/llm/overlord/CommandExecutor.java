@@ -20,7 +20,7 @@ public class CommandExecutor {
     private static final Set<String> VALID_ACTIONS = Set.of(
         "build", "demolish", "set_policy", "recruit",
         "set_tax", "set_ration", "set_speed", "pause",
-        "info"
+        "info", "clear_placement"
     );
 
     public CommandResult execute(Command cmd) {
@@ -40,6 +40,7 @@ public class CommandExecutor {
                 case "pause" -> executePause(cmd);
                 case "set_tax" -> executeSetTax(cmd);
                 case "build" -> executeBuild(cmd);
+                case "clear_placement" -> executeClearPlacement(cmd);
                 case "set_policy" -> executeSetPolicy(cmd);
                 case "recruit" -> executeRecruit(cmd);
                 default -> new CommandResult(false, "'" + cmd.action + "' recognized but not yet implemented");
@@ -112,6 +113,11 @@ public class CommandExecutor {
             return new CommandResult(false, "Build requires 'x' and 'y' coordinates");
         }
         return RoomBuilder.build(cmd.target, cmd.x, cmd.y, cmd.params);
+    }
+
+    private CommandResult executeClearPlacement(Command cmd) {
+        PlacementCleanup.release();
+        return new CommandResult(true, "Cleared TmpArea and placer locks");
     }
 
     private CommandResult executeSetPolicy(Command cmd) {

@@ -35,6 +35,7 @@ public class StateReader {
         readGameTime(state);
         readGameSpeed(state);
         readThrone(state);
+        readMapGrid(state);
         readPopulation(state);
         readHappiness(state);
         readResources(state);
@@ -78,6 +79,14 @@ public class StateReader {
             state.throne = throne;
         } catch (Exception e) {
             state.errors.add("throne: " + e.getMessage());
+        }
+    }
+
+    private void readMapGrid(GameState state) {
+        try {
+            MapExporter.exportTo(state);
+        } catch (Exception e) {
+            state.errors.add("mapGrid: " + e.getMessage());
         }
     }
 

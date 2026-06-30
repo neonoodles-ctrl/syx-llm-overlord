@@ -46,6 +46,10 @@ def knowledge_path() -> Path:
     return Path(os.environ.get("SYX_KNOWLEDGE_PATH", logs_dir() / "overlord-knowledge.json"))
 
 
+def map_pins_path() -> Path:
+    return Path(os.environ.get("SYX_MAP_PINS_PATH", logs_dir() / "map-pins.json"))
+
+
 def knowledge_wiki_path() -> Path:
     return Path(
         os.environ.get(
@@ -53,6 +57,10 @@ def knowledge_wiki_path() -> Path:
             wiki_dir() / "memory" / "knowledge.md",
         )
     )
+
+
+def screenshots_dir() -> Path:
+    return Path(os.environ.get("SYX_SCREENSHOTS_DIR", logs_dir() / "screenshots"))
 
 
 def restart_script_path() -> Path:

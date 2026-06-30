@@ -12,6 +12,8 @@ Knowledge base for the AI overlord: how it plays, what it remembers, and how the
 ## Rules & playbooks
 
 - [[rules/playbook|Starter Playbook]] — **source of truth** injected into every LLM tick
+- [[modes/teacher|Teacher mode]] — teaches player while playing
+- [[modes/civil-flow|Civil Flow State]] — wiki-backed expert autopilot
 - [[rules/commands|Command API]] — what actions work vs stubs
 - [[rules/rooms|Room types & aliases]] — build targets the mod understands
 - [[rules/failures|Failure messages]] — how to read and recover from errors

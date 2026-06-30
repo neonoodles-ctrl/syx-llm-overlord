@@ -9,9 +9,9 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 
 from .config import (
@@ -31,10 +31,34 @@ from .game_client import GameClient
 from .llm_brain import LLMBrain
 from .memory import OverlordMemory
 from .knowledge import OverlordKnowledge
+from .command_guard import (
+    filter_commands,
+    apply_timeout_backoff,
+    is_timeout_result,
+    is_tmparea_result,
+    record_build_outcome,
+    should_clear_placement,
+    reset_session_guard,
+    guard_status,
+)
+from .game_session import GameSessionTracker
+from .screenshot import (
+    capture_game_screenshot,
+    latest_screenshot_path,
+    save_uploaded_screenshot,
+)
+from .monitors import (
+    apply_monitor,
+    list_monitors,
+    active_monitor_index,
+    display_env,
+    launcher_settings_path,
+)
 from .wiki_sync import sync_memory_to_wiki
 from .paths import restart_script_path, repo_root
+from .map_pins import MapPinStore
 from .personalities import personality_choices, normalize_personality_id, get_personality
-from .models import GameState, TickRecord, LLMDecision, CommandResult
+from .models import GameState, TickRecord, LLMDecision, CommandResult, Command
 from . import dashboard as dash_module
 
 logger = logging.getLogger("syx-overlord")
@@ -72,6 +96,9 @@ user_orders: list[str] = []
 chat_log: list[dict] = []
 overlord_memory = OverlordMemory()
 overlord_knowledge = OverlordKnowledge()
+pending_chat_screenshot: dict | None = None  # path, base64, filename for next chat message
+game_session = GameSessionTracker()
+map_pin_store = MapPinStore()
 
 
 class LLMUpdateRequest(BaseModel):
@@ -100,6 +127,21 @@ class KnowledgeNoteRequest(BaseModel):
 
 class PersonalityUpdateRequest(BaseModel):
     personality: str
+
+
+class MonitorUpdateRequest(BaseModel):
+    index: int
+    pin_now: bool = True
+    restart: bool = False
+
+
+class MapPinRequest(BaseModel):
+    x: int
+    y: int
+    label: str = "build here"
+    pin_type: str = "custom"
+    color: str | None = None
+    queue: bool = False
 
 
 def reload_llm_brain() -> None:
@@ -184,6 +226,7 @@ async def decision_loop():
     global current_state
     tick = 0
     recent_history: list[str] = []
+    consecutive_timeouts = 0
 
     while running:
         try:
@@ -199,36 +242,135 @@ async def decision_loop():
                 await asyncio.sleep(config.game.poll_interval_seconds)
                 continue
 
+            if game_session.check_new_game(state):
+                tick = 0
+                recent_history.clear()
+                consecutive_timeouts = 0
+                reset_session_guard()
+                overlord_knowledge.reset_for_new_game(
+                    throne=state.throne,
+                    day=state.gameTime.get("day") if state.gameTime else None,
+                )
+                overlord_memory.clear()
+                map_pin_store.clear()
+                overlord_memory.append(
+                    "New game detected — session memory and coord blacklist cleared.",
+                    kind="session",
+                )
+                logger.info(
+                    "New game detected — reset memory, knowledge blacklist, guard state"
+                )
+
             # 2. Get LLM decision
             tick += 1
             mem_context = overlord_memory.for_prompt()
             knowledge_context = overlord_knowledge.for_prompt()
+            pins_context = map_pin_store.for_prompt()
+
+            screenshot_b64: str | None = None
+            if config.vision.enabled and config.vision.every_n_ticks > 0:
+                if tick == 1 or tick % config.vision.every_n_ticks == 0:
+                    shot = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: capture_game_screenshot(
+                            max_width=config.vision.max_width,
+                        ),
+                    )
+                    if shot.ok and shot.base64_png:
+                        screenshot_b64 = shot.base64_png
+                        logger.info(
+                            f"Tick {tick}: screenshot {shot.path} "
+                            f"({shot.width}x{shot.height})"
+                        )
+                    elif shot.error:
+                        logger.warning(f"Tick {tick}: screenshot failed: {shot.error}")
+
             logger.info(f"Tick {tick}: Getting LLM decision...")
             decision = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: llm_brain.decide(
+                lambda pc=pins_context: llm_brain.decide(
                     state,
                     recent_history,
                     list(user_orders),
+                    pc,
                     mem_context,
                     knowledge_context,
+                    screenshot_b64,
+                    config.vision.model if screenshot_b64 else None,
                 ),
             )
             logger.info(f"Tick {tick}: LLM mood={decision.mood}, commands={len(decision.commands)}")
             logger.info(f"Tick {tick}: Reasoning: {decision.reasoning}")
 
-            # 3. Execute commands
+            # 3. Auto-clear TmpArea ghosts before builds when saturated
+            if should_clear_placement():
+                try:
+                    clear_res = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        game_client.send_command,
+                        Command(action="clear_placement"),
+                    )
+                    logger.info(
+                        f"Tick {tick}: clear_placement "
+                        f"{'OK' if clear_res.success else 'FAIL'} - {clear_res.message}"
+                    )
+                except Exception as e:
+                    logger.warning(f"Tick {tick}: clear_placement error: {e}")
+
+            # 4. Pre-flight filter + timeout backoff
+            raw_commands = decision.commands[: config.game.command_rate_limit]
+            allowed, rejected = filter_commands(raw_commands, state, overlord_knowledge)
+            commands_to_run, backoff = apply_timeout_backoff(allowed, consecutive_timeouts)
+            if backoff:
+                logger.warning(
+                    f"Tick {tick}: timeout backoff ({consecutive_timeouts} streak) — "
+                    "set_speed only this tick"
+                )
+
+            executed_commands: list[Command] = []
             results: list[CommandResult] = []
-            for cmd in decision.commands[:config.game.command_rate_limit]:
+
+            for cmd, reason in rejected:
+                executed_commands.append(cmd)
+                results.append(CommandResult(success=False, message=f"BLOCKED: {reason}"))
+                logger.info(f"  Command '{cmd.action}' BLOCKED: {reason}")
+
+            for cmd in commands_to_run:
                 try:
                     result = await asyncio.get_event_loop().run_in_executor(
                         None, game_client.send_command, cmd
                     )
+                    executed_commands.append(cmd)
                     results.append(result)
-                    logger.info(f"  Command '{cmd.action}': {'OK' if result.success else 'FAIL'} - {result.message}")
+                    logger.info(
+                        f"  Command '{cmd.action}': "
+                        f"{'OK' if result.success else 'FAIL'} - {result.message}"
+                    )
+                    if cmd.action == "build":
+                        record_build_outcome(result.success, result.message, cmd.target)
+                        if not result.success and is_tmparea_result(result.message):
+                            try:
+                                clear_res = await asyncio.get_event_loop().run_in_executor(
+                                    None,
+                                    game_client.send_command,
+                                    Command(action="clear_placement"),
+                                )
+                                logger.info(
+                                    f"  post-fail clear_placement "
+                                    f"{'OK' if clear_res.success else 'FAIL'} - {clear_res.message}"
+                                )
+                            except Exception as e:
+                                logger.warning(f"  post-fail clear_placement error: {e}")
                 except Exception as e:
+                    executed_commands.append(cmd)
                     results.append(CommandResult(success=False, message=str(e)))
                     logger.error(f"  Command '{cmd.action}' error: {e}")
+
+            if results:
+                if any(is_timeout_result(r.message) for r in results):
+                    consecutive_timeouts += 1
+                elif any(r.success for r in results):
+                    consecutive_timeouts = 0
 
             # 4. Record tick
             record = TickRecord(
@@ -257,10 +399,19 @@ async def decision_loop():
                 pop,
                 state.throne or None,
                 decision.reasoning,
-                [c.model_dump(exclude_none=True) for c in decision.commands],
+                [c.model_dump(exclude_none=True) for c in executed_commands],
                 [{"success": r.success, "message": r.message} for r in results],
                 knowledge=overlord_knowledge,
             )
+            for cmd, res in zip(executed_commands, results):
+                if res.message.startswith("BLOCKED:"):
+                    overlord_memory.append(
+                        f"BLOCKED {cmd.action} {cmd.target} "
+                        f"at ({cmd.x},{cmd.y}): {res.message}",
+                        kind="blocked",
+                        tick=tick,
+                        day=day,
+                    )
             try:
                 sync_memory_to_wiki(
                     overlord_memory.entries(limit=200),
@@ -275,6 +426,7 @@ async def decision_loop():
                 "type": "tick",
                 "tick": tick,
                 "state": state.model_dump(),
+                "guard": guard_status(),
                 "decision": {
                     "reasoning": decision.reasoning,
                     "mood": decision.mood,
@@ -322,7 +474,7 @@ async def get_instructions():
 
 @app.post("/api/instruct")
 async def post_instruction(body: InstructRequest):
-    global user_orders, chat_log
+    global user_orders, chat_log, pending_chat_screenshot
     msg = (body.message or "").strip()
     if body.clear or not msg:
         user_orders = []
@@ -336,11 +488,23 @@ async def post_instruction(body: InstructRequest):
     knowledge_context = overlord_knowledge.for_prompt()
 
     reply = ""
+    screenshot_b64: str | None = None
+    if pending_chat_screenshot:
+        screenshot_b64 = pending_chat_screenshot.get("base64")
     if llm_brain:
+        vision_model = None
+        if screenshot_b64 and config:
+            vision_model = config.vision.model or config.llm.fallback_model
         reply = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: llm_brain.reply_to_user(
-                msg, current_state, mem_context, knowledge_context, recent
+                msg,
+                current_state,
+                mem_context,
+                knowledge_context,
+                recent,
+                screenshot_b64,
+                vision_model,
             ),
         )
 
@@ -360,12 +524,16 @@ async def post_instruction(body: InstructRequest):
         "user": msg,
         "reply": reply,
         "queued": body.queue_for_tick,
+        "screenshot": bool(screenshot_b64),
     }
     chat_log.append(entry)
     if len(chat_log) > 100:
         chat_log.pop(0)
 
     logger.info(f"Player chat: {msg[:80]} -> {reply[:80]}")
+    had_screenshot = bool(screenshot_b64)
+    if had_screenshot:
+        pending_chat_screenshot = None
     await broadcast_ws({
         "type": "chat",
         "id": entry["id"],
@@ -373,6 +541,7 @@ async def post_instruction(body: InstructRequest):
         "reply": reply,
         "orders": user_orders,
         "queued": body.queue_for_tick,
+        "screenshot": had_screenshot,
     })
     return {
         "success": True,
@@ -381,6 +550,7 @@ async def post_instruction(body: InstructRequest):
         "reply": reply,
         "orders": user_orders,
         "queued": body.queue_for_tick,
+        "screenshot": had_screenshot,
     }
 
 
@@ -432,6 +602,193 @@ async def add_knowledge_note(body: KnowledgeNoteRequest):
     return {"success": True, "snapshot": snap}
 
 
+@app.get("/api/map")
+async def get_map():
+    """ASCII tile grid from latest game state (requires updated mod + game restart)."""
+    pins = map_pin_store.snapshot()
+    if current_state and current_state.mapRows:
+        return {
+            "centerX": current_state.mapCenterX,
+            "centerY": current_state.mapCenterY,
+            "radius": current_state.mapRadius,
+            "legend": current_state.mapLegend,
+            "rows": current_state.mapRows,
+            "pins": pins,
+        }
+    try:
+        state = await asyncio.get_event_loop().run_in_executor(
+            None, game_client.get_state
+        )
+        if state.mapRows:
+            return {
+                "centerX": state.mapCenterX,
+                "centerY": state.mapCenterY,
+                "radius": state.mapRadius,
+                "legend": state.mapLegend,
+                "rows": state.mapRows,
+                "pins": pins,
+            }
+    except Exception as e:
+        return {"success": False, "message": str(e), "pins": pins}
+    return {
+        "success": False,
+        "message": "No map grid in state — restart the game to load the updated mod JAR",
+        "pins": pins,
+    }
+
+
+@app.get("/api/map/pins")
+async def list_map_pins():
+    return {"pins": map_pin_store.snapshot()}
+
+
+@app.post("/api/map/pins")
+async def add_map_pin(body: MapPinRequest):
+    global user_orders
+    pin = map_pin_store.add(
+        body.x, body.y, body.label, body.pin_type, body.color
+    )
+    if body.queue:
+        line = pin.order_line()
+        user_orders.append(line)
+        if len(user_orders) > 10:
+            user_orders = user_orders[-10:]
+        overlord_memory.log_order(line)
+    await broadcast_ws({"type": "map_pins", "pins": map_pin_store.snapshot()})
+    return {"success": True, "pin": pin.to_dict(), "pins": map_pin_store.snapshot()}
+
+
+@app.delete("/api/map/pins/{pin_id}")
+async def delete_map_pin(pin_id: str):
+    ok = map_pin_store.remove(pin_id)
+    await broadcast_ws({"type": "map_pins", "pins": map_pin_store.snapshot()})
+    return {"success": ok, "pins": map_pin_store.snapshot()}
+
+
+@app.delete("/api/map/pins")
+async def clear_map_pins():
+    map_pin_store.clear()
+    await broadcast_ws({"type": "map_pins", "pins": []})
+    return {"success": True, "pins": []}
+
+
+@app.post("/api/map/pins/queue")
+async def queue_map_pins():
+    """Push all pins into the overlord order queue for the next tick."""
+    global user_orders
+    lines = map_pin_store.queue_lines()
+    for line in lines:
+        user_orders.append(line)
+    if len(user_orders) > 10:
+        user_orders = user_orders[-10:]
+    for line in lines:
+        overlord_memory.log_order(line)
+    await broadcast_ws({"type": "map_pins", "pins": map_pin_store.snapshot(), "orders": user_orders})
+    return {"success": True, "queued": lines, "orders": user_orders}
+
+
+@app.post("/api/screenshot")
+async def take_screenshot():
+    """Capture the game window now (xdotool + ImageMagick import)."""
+    global pending_chat_screenshot
+    shot = await asyncio.get_event_loop().run_in_executor(
+        None,
+        lambda: capture_game_screenshot(
+            max_width=config.vision.max_width if config else 1024,
+        ),
+    )
+    if shot.ok and shot.base64_png and shot.path:
+        pending_chat_screenshot = {
+            "path": str(shot.path),
+            "base64": shot.base64_png,
+            "filename": shot.path.name,
+            "width": shot.width,
+            "height": shot.height,
+        }
+    return {
+        "success": shot.ok,
+        "path": str(shot.path) if shot.path else None,
+        "width": shot.width,
+        "height": shot.height,
+        "window_id": shot.window_id,
+        "error": shot.error,
+        "attached": bool(shot.ok),
+        "preview_url": "/api/screenshot/pending/image" if shot.ok else None,
+    }
+
+
+@app.get("/api/screenshot/latest")
+async def get_latest_screenshot():
+    """Return the most recent settlement PNG."""
+    path = latest_screenshot_path()
+    if path and path.is_file():
+        return FileResponse(path, media_type="image/png", filename=path.name)
+    return {"success": False, "message": "No screenshot captured yet"}
+
+
+@app.get("/api/screenshot/pending")
+async def get_pending_screenshot():
+    """Attached screenshot for the next chat message."""
+    if pending_chat_screenshot and pending_chat_screenshot.get("path"):
+        p = Path(pending_chat_screenshot["path"])
+        if p.is_file():
+            return {
+                "attached": True,
+                "path": str(p),
+                "filename": pending_chat_screenshot.get("filename", p.name),
+                "width": pending_chat_screenshot.get("width"),
+                "height": pending_chat_screenshot.get("height"),
+                "preview_url": "/api/screenshot/pending/image",
+            }
+    return {"attached": False}
+
+
+@app.get("/api/screenshot/pending/image")
+async def get_pending_screenshot_image():
+    if pending_chat_screenshot and pending_chat_screenshot.get("path"):
+        p = Path(pending_chat_screenshot["path"])
+        if p.is_file():
+            return FileResponse(p, media_type="image/png", filename=p.name)
+    return {"success": False, "message": "No screenshot attached"}
+
+
+@app.delete("/api/screenshot/pending")
+async def clear_pending_screenshot():
+    global pending_chat_screenshot
+    pending_chat_screenshot = None
+    return {"success": True, "attached": False}
+
+
+@app.post("/api/screenshot/upload")
+async def upload_screenshot(file: UploadFile = File(...)):
+    """Upload a PNG/JPEG for the overlord to see in chat."""
+    global pending_chat_screenshot
+    data = await file.read()
+    max_w = config.vision.max_width if config else 1024
+    shot = save_uploaded_screenshot(
+        data,
+        file.filename or "upload.png",
+        max_width=max_w,
+    )
+    if not shot.ok:
+        return {"success": False, "error": shot.error}
+    pending_chat_screenshot = {
+        "path": str(shot.path),
+        "base64": shot.base64_png,
+        "filename": file.filename or shot.path.name,
+        "width": shot.width,
+        "height": shot.height,
+    }
+    return {
+        "success": True,
+        "path": str(shot.path),
+        "filename": pending_chat_screenshot["filename"],
+        "width": shot.width,
+        "height": shot.height,
+        "preview_url": "/api/screenshot/pending/image",
+    }
+
+
 @app.post("/api/playbook/reload")
 async def reload_playbook():
     """Pick up Obsidian wiki playbook edits (re-read on next tick automatically)."""
@@ -468,8 +825,59 @@ async def get_config():
             "openrouter_configured": bool(or_key),
             "poll_interval": config.game.poll_interval_seconds,
             "game_url": config.game.mod_url,
+            "vision_enabled": config.vision.enabled,
+            "vision_every_n_ticks": config.vision.every_n_ticks,
+            "vision_model": config.vision.model,
         }
     return {}
+
+
+@app.get("/api/monitors")
+async def get_monitors():
+    """List game monitor map (GLFW index ↔ XRandR) and active selection."""
+    monitors = list_monitors()
+    env = display_env()
+    return {
+        "success": True,
+        "active_index": active_monitor_index(),
+        "display": env.get("DISPLAY", ":0"),
+        "launcher_settings": str(launcher_settings_path()),
+        "monitors": [
+            {
+                "index": m.index,
+                "label": m.label,
+                "xrandr": m.xrandr,
+                "connected": m.connected,
+                "geometry": m.geometry,
+                "width": m.width,
+                "height": m.height,
+                "active": m.active,
+            }
+            for m in monitors
+        ],
+    }
+
+
+@app.post("/api/monitors")
+async def set_monitor(body: MonitorUpdateRequest):
+    """Set game MONITOR index in LauncherSettings + syx.launch.conf."""
+    result = await asyncio.get_event_loop().run_in_executor(
+        None,
+        lambda: apply_monitor(body.index, pin_now=body.pin_now),
+    )
+    if not result.get("success"):
+        return result
+
+    if body.restart:
+        restart_resp = await restart_game()
+        result["restart"] = restart_resp
+
+    await broadcast_ws({
+        "type": "monitor",
+        "active_index": body.index,
+        "xrandr": result.get("xrandr"),
+    })
+    return result
 
 
 @app.get("/api/ollama/models")

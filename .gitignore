@@ -18,4 +18,5 @@ node_modules/
 *.log
 logs/
 wiki/memory/live-log.md
+wiki/memory/knowledge.md
 saves/

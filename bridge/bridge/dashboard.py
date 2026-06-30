@@ -111,6 +111,172 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     flex-direction: column;
   }
 
+  .view-map.active {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 14px;
+    gap: 10px;
+    min-height: 0;
+  }
+
+  .map-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    flex-shrink: 0;
+  }
+
+  .map-toolbar label {
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .map-toolbar select, .map-toolbar input[type=range] {
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .map-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .map-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .map-legend-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+
+  .map-layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    gap: 12px;
+  }
+
+  .map-scroll-wrap {
+    flex: 1;
+    min-width: 0;
+    overflow: auto;
+    background: #0a0c0f;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+  }
+
+  .map-grid {
+    display: grid;
+    gap: 0;
+    width: max-content;
+    margin: 0 auto;
+    user-select: none;
+  }
+
+  .map-cell {
+    box-sizing: border-box;
+    border: 1px solid rgba(255,255,255,0.04);
+    cursor: crosshair;
+    position: relative;
+    font-size: 0;
+    transition: outline 0.1s;
+  }
+
+  .map-cell:hover {
+    outline: 2px solid var(--gold-dim);
+    z-index: 2;
+  }
+
+  .map-cell.has-pin::after {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    border: 2px solid var(--pin-color, #e91e63);
+    border-radius: 2px;
+    box-shadow: 0 0 6px var(--pin-color, #e91e63);
+    pointer-events: none;
+  }
+
+  .map-cell.is-throne {
+    outline: 2px solid #ffd700;
+    z-index: 1;
+  }
+
+  .map-sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+  }
+
+  .map-pin-list {
+    flex: 1;
+    overflow-y: auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+    font-size: 12px;
+  }
+
+  .map-pin-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 6px 4px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .map-pin-item:last-child { border-bottom: none; }
+
+  .map-pin-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-top: 3px;
+    flex-shrink: 0;
+  }
+
+  .map-pin-meta { flex: 1; min-width: 0; }
+  .map-pin-coords { font-family: monospace; color: var(--gold); font-size: 11px; }
+  .map-pin-label { color: var(--text-dim); font-size: 11px; word-break: break-word; }
+
+  .map-status {
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 4px 0;
+  }
+
+  .map-empty {
+    text-align: center;
+    color: var(--text-dim);
+    padding: 40px 20px;
+    font-size: 13px;
+  }
+
   .view-settings {
     grid-template-columns: minmax(340px, 0.42fr) minmax(420px, 0.58fr);
     gap: 1px;
@@ -547,7 +713,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
   .chat-section {
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
     min-height: 0;
     overflow: hidden;
     background: var(--bg-panel);
@@ -558,7 +724,170 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     border-top: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
+  }
+
+  .play-model-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(26, 26, 40, 0.6);
+  }
+
+  .play-model-bar .provider-tabs {
+    margin: 0;
+  }
+
+  .play-model-bar .provider-tab {
+    padding: 4px 10px;
+    font-size: 10px;
+  }
+
+  .play-model-select {
+    flex: 1;
+    min-width: 160px;
+    max-width: 320px;
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    color: var(--text-bright);
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .play-model-hint {
+    font-size: 10px;
+    color: var(--text-dim);
+    width: 100%;
+    margin-top: -2px;
+  }
+
+  .play-monitor-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 16px 8px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(20, 20, 32, 0.5);
+  }
+
+  .play-monitor-bar .monitor-bar-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    min-width: 52px;
+  }
+
+  .play-monitor-bar .provider-tabs {
+    margin: 0;
+    flex-wrap: wrap;
+  }
+
+  .play-monitor-bar .monitor-tab.disconnected {
+    opacity: 0.45;
+    text-decoration: line-through;
+  }
+
+  .play-monitor-hint {
+    font-size: 10px;
+    color: var(--text-dim);
+    width: 100%;
+    margin-top: -2px;
+  }
+
+  .play-mode-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    background: rgba(0,0,0,0.25);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+
+  .play-mode-bar .mode-bar-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    font-family: 'Cinzel', serif;
+  }
+
+  .play-mode-bar .mode-tab {
+    font-size: 10px;
+    padding: 4px 10px;
+  }
+
+  .play-mode-bar .mode-tab.active {
+    border-color: var(--gold);
+    color: var(--gold);
+    background: rgba(201, 162, 39, 0.12);
+  }
+
+  .play-mode-hint {
+    font-size: 10px;
+    color: var(--text-dim);
+    flex: 1;
+    min-width: 140px;
+  }
+
+  .screenshot-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .screenshot-preview {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+
+  .screenshot-preview.visible {
+    display: flex;
+  }
+
+  .screenshot-preview img {
+    max-height: 48px;
+    max-width: 80px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+  }
+
+  .screenshot-preview .screenshot-name {
+    font-size: 10px;
+    color: var(--text-dim);
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .btn-icon {
+    padding: 5px 10px;
+    font-size: 11px;
+  }
+
+  .chat-compose-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .chat-compose {
     flex-shrink: 0;
     background: var(--bg-dark);
   }
@@ -864,6 +1193,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <h1>Syx LLM Overlord</h1>
     <nav class="main-tabs">
       <button type="button" class="main-tab active" data-view="play" onclick="switchView('play')">Overlord</button>
+      <button type="button" class="main-tab" data-view="map" onclick="switchView('map')">Map</button>
       <button type="button" class="main-tab" data-view="settings" onclick="switchView('settings')">Settings &amp; Chronicle</button>
     </nav>
   </div>
@@ -916,13 +1246,53 @@ DASHBOARD_HTML = """<!DOCTYPE html>
               <span class="meta-badge meta-model" id="badgeModel" title="Active model">—</span>
             </span>
           </div>
+          <div class="play-model-bar">
+            <div class="provider-tabs">
+              <button type="button" class="provider-tab" id="playTabOllama" onclick="switchProvider('ollama')">Ollama</button>
+              <button type="button" class="provider-tab" id="playTabOpenRouter" onclick="switchProvider('openrouter')">OpenRouter</button>
+            </div>
+            <select class="play-model-select" id="playModelSelect" title="Active LLM model">
+              <option>Loading…</option>
+            </select>
+            <button class="btn btn-icon" onclick="applyModel('play')">Apply</button>
+            <button class="btn btn-icon" onclick="refreshModels()">↻</button>
+            <div class="play-model-hint" id="playModelHint">Switch model without leaving the Overlord tab</div>
+          </div>
+          <div class="play-monitor-bar">
+            <span class="monitor-bar-label">Monitor</span>
+            <div class="provider-tabs" id="monitorTabs">
+              <button type="button" class="provider-tab monitor-tab" data-monitor="0" onclick="selectMonitorTab(0)">0</button>
+              <button type="button" class="provider-tab monitor-tab" data-monitor="1" onclick="selectMonitorTab(1)">1</button>
+              <button type="button" class="provider-tab monitor-tab" data-monitor="2" onclick="selectMonitorTab(2)">2</button>
+            </div>
+            <button class="btn btn-icon" onclick="applyMonitor(false)">Apply</button>
+            <button class="btn btn-icon" onclick="applyMonitor(true)" title="Save monitor + restart game">Apply &amp; restart</button>
+            <div class="play-monitor-hint" id="monitorHint">Loading monitors…</div>
+          </div>
+          <div class="play-mode-bar">
+            <span class="mode-bar-label">Game mode</span>
+            <div class="provider-tabs" id="gameModeTabs">
+              <button type="button" class="provider-tab mode-tab" data-mode="teacher" onclick="selectGameMode('teacher')">Teacher</button>
+              <button type="button" class="provider-tab mode-tab" data-mode="civil_flow" onclick="selectGameMode('civil_flow')">Civil Flow</button>
+            </div>
+            <button class="btn btn-icon" onclick="applyGameMode()">Apply</button>
+            <div class="play-mode-hint" id="gameModeHint">Teacher explains · Civil Flow = wiki expert</div>
+          </div>
           <div class="chat-panel" id="chatPanel">
             <div class="chat-empty" id="chatEmpty">No messages yet — ask the Overlord anything, or give a build order.</div>
           </div>
           <div class="order-queue" id="orderQueue"></div>
           <div class="chat-compose">
+            <div class="screenshot-preview" id="screenshotPreview">
+              <img id="screenshotThumb" src="" alt="Attached screenshot">
+              <span class="screenshot-name" id="screenshotName">screenshot.png</span>
+              <button class="btn btn-icon" type="button" onclick="clearScreenshot()" title="Remove attachment">✕</button>
+            </div>
             <textarea class="order-input" id="orderInput" placeholder="Ask a question or give an order… (Enter to send)"></textarea>
             <div class="order-actions">
+              <input type="file" id="screenshotUpload" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+              <button class="btn btn-icon" type="button" onclick="document.getElementById('screenshotUpload').click()">Upload image</button>
+              <button class="btn btn-icon" type="button" onclick="captureScreenshot()">Capture game</button>
               <button class="btn" onclick="sendOrder()">Send</button>
               <button class="btn" onclick="clearOrders()">Clear queue</button>
             </div>
@@ -947,6 +1317,43 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       <div class="banner-track">
         <div class="banner-stream" id="bannerStream">
           <span class="banner-item banner-dim">Awaiting commands…</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Map view: tile grid + player pins -->
+  <div id="viewMap" class="view view-map">
+    <div class="map-toolbar">
+      <span style="font-family:Cinzel,serif;color:var(--gold);font-size:12px;">Settlement map</span>
+      <label>Pin type
+        <select id="mapPinType">
+          <option value="farm">Farm</option>
+          <option value="home">Home</option>
+          <option value="well">Well</option>
+          <option value="stockpile">Stockpile</option>
+          <option value="woodcutter">Woodcutter</option>
+          <option value="custom">Custom</option>
+        </select>
+      </label>
+      <label>Zoom
+        <input type="range" id="mapCellSize" min="8" max="28" value="14" oninput="renderMapGrid()">
+      </label>
+      <button class="btn btn-icon" onclick="refreshMapView()">↻ Refresh</button>
+      <button class="btn btn-icon" onclick="queueAllMapPins()">Tell Overlord</button>
+      <button class="btn btn-icon" onclick="clearAllMapPins()">Clear pins</button>
+      <div class="map-legend" id="mapLegendBar"></div>
+    </div>
+    <div class="map-status" id="mapStatus">Loading map…</div>
+    <div class="map-layout">
+      <div class="map-scroll-wrap" id="mapScrollWrap">
+        <div class="map-empty" id="mapEmpty">No map data — ensure the game is running with the LLM Overlord mod enabled.</div>
+        <div class="map-grid" id="mapGrid" hidden></div>
+      </div>
+      <div class="map-sidebar">
+        <div class="panel-header" style="padding:0 4px;">Your pins</div>
+        <div class="map-pin-list" id="mapPinList">
+          <div style="color:var(--text-dim);font-size:11px;">Click a tile to place a pin. Click again to remove.</div>
         </div>
       </div>
     </div>
@@ -1014,6 +1421,14 @@ function handleMessage(data) {
     updateState(data.state);
     updateThoughts(data.decision);
     updateHistory(data.tick, data.decision, data.results);
+    if (document.getElementById('viewMap')?.classList.contains('active') && data.state?.mapRows?.length) {
+      mapCache.rows = data.state.mapRows;
+      mapCache.centerX = data.state.mapCenterX;
+      mapCache.centerY = data.state.mapCenterY;
+      mapCache.radius = data.state.mapRadius;
+      mapCache.legend = data.state.mapLegend;
+      renderMapGrid();
+    }
   } else if (data.type === 'state') {
     updateState(data.state);
   } else if (data.type === 'error') {
@@ -1021,10 +1436,18 @@ function handleMessage(data) {
   } else if (data.type === 'order') {
     renderOrderQueue(data.orders);
   } else if (data.type === 'chat') {
-    appendChat(data.user, data.reply, data.id);
+    appendChat(data.user, data.reply, data.id, true, data.screenshot);
     renderOrderQueue(data.orders);
   } else if (data.type === 'personality') {
     setPersonalityUi(data.personality, data.personality_name, data.personality_label);
+    renderGameModeTabs(data.personality);
+  } else if (data.type === 'monitor') {
+    selectedMonitorIndex = data.active_index ?? selectedMonitorIndex;
+    renderMonitorTabs(monitorCache, selectedMonitorIndex);
+  } else if (data.type === 'map_pins') {
+    mapCache.pins = data.pins || [];
+    renderMapPinList();
+    if (mapCache.rows?.length) renderMapGrid();
   } else if (data.type === 'memory' || data.type === 'memory_cleared') {
     loadMemory();
   }
@@ -1171,8 +1594,9 @@ function switchView(view) {
   document.querySelectorAll('.main-tab').forEach(t => {
     t.classList.toggle('active', t.dataset.view === view);
   });
-  const target = view === 'settings' ? 'viewSettings' : 'viewPlay';
-  document.getElementById(target)?.classList.add('active');
+  const targets = { play: 'viewPlay', settings: 'viewSettings', map: 'viewMap' };
+  document.getElementById(targets[view] || 'viewPlay')?.classList.add('active');
+  if (view === 'map') refreshMapView();
 }
 
 function updateMainBadges(cfg) {
@@ -1192,6 +1616,54 @@ let overlordLabel = 'Overlord,';
 // Load config + provider model lists
 let currentProvider = 'ollama';
 let cfgCache = {};
+let selectedMonitorIndex = 0;
+let monitorCache = [];
+let selectedGameMode = 'teacher';
+
+function renderGameModeTabs(activeId) {
+  const tabs = document.getElementById('gameModeTabs');
+  if (!tabs) return;
+  const modes = (cfgCache.personalities || []).filter(p => p.kind === 'game_mode');
+  const active = activeId || cfgCache.personality;
+  const isMode = modes.some(m => m.id === active);
+  tabs.querySelectorAll('.mode-tab').forEach(btn => {
+    const id = btn.dataset.mode;
+    const on = isMode && id === active;
+    btn.classList.toggle('active', on);
+    const meta = modes.find(m => m.id === id);
+    if (meta?.description) btn.title = meta.description;
+  });
+  if (isMode) selectedGameMode = active;
+}
+
+function selectGameMode(modeId) {
+  selectedGameMode = modeId;
+  renderGameModeTabs(modeId);
+}
+
+async function applyGameMode() {
+  const hint = document.getElementById('gameModeHint');
+  try {
+    if (hint) hint.textContent = 'Applying game mode…';
+    const resp = await fetch('/api/config/personality', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ personality: selectedGameMode }),
+    });
+    const result = await resp.json();
+    if (result.success) {
+      cfgCache = { ...cfgCache, personality: result.personality, personality_name: result.personality_name, personality_label: result.personality_label };
+      setPersonalityUi(result.personality, result.personality_name, result.personality_label);
+      renderGameModeTabs(result.personality);
+      const desc = (cfgCache.personalities || []).find(p => p.id === result.personality)?.description || result.personality_name;
+      if (hint) hint.innerHTML = '<span class="apply-ok">✓ ' + escapeHtml(desc) + '</span>';
+    } else {
+      if (hint) hint.textContent = 'Failed: ' + (result.message || 'unknown');
+    }
+  } catch (e) {
+    if (hint) hint.textContent = 'Error: ' + e.message;
+  }
+}
 
 function formatActiveModel(prov, model) {
   if (!model) return '--';
@@ -1221,6 +1693,9 @@ async function loadConfig() {
     if (cfg.personality_label) overlordLabel = cfg.personality_label;
     updateMainBadges(cfg);
     renderConfigPanel(cfg);
+    renderGameModeTabs(cfg.personality);
+    document.getElementById('playTabOllama')?.classList.toggle('active', currentProvider === 'ollama');
+    document.getElementById('playTabOpenRouter')?.classList.toggle('active', currentProvider === 'openrouter');
     await loadModelsForProvider(currentProvider, cfg.llm_model);
   } catch (e) {
     console.error('Failed to load config:', e);
@@ -1244,19 +1719,23 @@ function renderConfigPanel(cfg) {
   const panel = document.getElementById('configPanel');
   const prov = cfg.llm_provider || 'ollama';
   const personalities = cfg.personalities || [];
-  const persOptions = personalities.map(p =>
-    `<option value="${p.id}"${p.id === cfg.personality ? ' selected' : ''}>${escapeHtml(p.name)}</option>`
-  ).join('');
+  const modes = personalities.filter(p => p.kind === 'game_mode');
+  const personas = personalities.filter(p => p.kind !== 'game_mode');
+  const opt = (p) => `<option value="${p.id}"${p.id === cfg.personality ? ' selected' : ''}>${escapeHtml(p.name)}</option>`;
+  const persOptions = [
+    modes.length ? `<optgroup label="Game modes">${modes.map(opt).join('')}</optgroup>` : '',
+    personas.length ? `<optgroup label="Personas">${personas.map(opt).join('')}</optgroup>` : '',
+  ].join('') || '<option value="gregg">Gregg</option>';
   panel.innerHTML = `
     <div class="config-row">
       <span class="config-label">Active</span>
       <span class="config-value" id="activeModel">${formatActiveModel(prov, cfg.llm_model)}</span>
     </div>
     <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 6px;">
-      <span class="config-label">Personality</span>
-      <select class="config-select" id="personalitySelect">${persOptions || '<option value="gregg">Gregg</option>'}</select>
+      <span class="config-label">Game mode / Persona</span>
+      <select class="config-select" id="personalitySelect">${persOptions}</select>
       <div class="config-actions">
-        <button class="btn" onclick="applyPersonality()">Apply Persona</button>
+        <button class="btn" onclick="applyPersonality()">Apply</button>
       </div>
       <div class="config-hint" id="personalityHint">Active: <span id="activePersonality">${escapeHtml(cfg.personality_name || 'Gregg')}</span></div>
     </div>
@@ -1274,7 +1753,7 @@ function renderConfigPanel(cfg) {
         <select class="config-select" id="ollamaModelSelect"><option>Loading…</option></select>
         <div class="config-actions">
           <button class="btn btn-wake" id="wakeBtn" onclick="wakeOllama()"${prov === 'ollama' ? '' : ' disabled title="Apply Ollama provider first"'}>Wake / Load Model</button>
-          <button class="btn" onclick="applyModel()">Apply</button>
+          <button class="btn" onclick="applyModel('settings')">Apply</button>
           <button class="btn" onclick="refreshModels()">Refresh</button>
         </div>
         <div class="config-hint" id="ollamaHint">${prov === 'ollama' ? 'Cold Unraid Ollama? Click Wake first (may take ~2 min).' : 'OpenRouter active — Ollama on Unraid is not contacted until you Apply Ollama.'}</div>
@@ -1286,7 +1765,7 @@ function renderConfigPanel(cfg) {
         </div>
         <select class="config-select" id="openrouterModelSelect"><option>Loading…</option></select>
         <div class="config-actions">
-          <button class="btn" onclick="applyModel()">Apply</button>
+          <button class="btn" onclick="applyModel('settings')">Apply</button>
           <button class="btn" onclick="refreshModels()">Refresh</button>
         </div>
         <div class="config-hint" id="openrouterHint">OpenRouter cloud models</div>
@@ -1309,8 +1788,18 @@ function switchProvider(prov) {
   document.getElementById('tabOpenRouter')?.classList.toggle('active', prov === 'openrouter');
   document.getElementById('panelOllama')?.classList.toggle('active', prov === 'ollama');
   document.getElementById('panelOpenRouter')?.classList.toggle('active', prov === 'openrouter');
+  document.getElementById('playTabOllama')?.classList.toggle('active', prov === 'ollama');
+  document.getElementById('playTabOpenRouter')?.classList.toggle('active', prov === 'openrouter');
   const activeModel = cfgCache.llm_provider === prov ? cfgCache.llm_model : null;
   loadModelsForProvider(prov, activeModel);
+}
+
+function setSelectOptions(select, html) {
+  if (select) select.innerHTML = html;
+}
+
+function syncPlayModelSelect(html) {
+  setSelectOptions(document.getElementById('playModelSelect'), html);
 }
 
 async function loadModelsForProvider(prov, selectedModel) {
@@ -1324,12 +1813,15 @@ async function loadModelsForProvider(prov, selectedModel) {
 async function loadOllamaModels(selectedModel) {
   const select = document.getElementById('ollamaModelSelect');
   const hint = document.getElementById('ollamaHint');
+  const playHint = document.getElementById('playModelHint');
   const wakeBtn = document.getElementById('wakeBtn');
-  if (!select) return;
 
   if (cfgCache.llm_provider !== 'ollama') {
-    select.innerHTML = '<option value="">Apply Ollama provider to list models</option>';
+    const msg = '<option value="">Apply Ollama provider to list models</option>';
+    setSelectOptions(select, msg);
+    if (currentProvider === 'ollama') syncPlayModelSelect(msg);
     if (hint) hint.textContent = 'OpenRouter is active — Unraid Ollama stays idle until you Apply Ollama.';
+    if (playHint && currentProvider === 'ollama') playHint.textContent = 'Apply Ollama to activate Unraid models';
     if (wakeBtn) wakeBtn.disabled = true;
     return;
   }
@@ -1339,23 +1831,33 @@ async function loadOllamaModels(selectedModel) {
     const resp = await fetch('/api/ollama/models');
     const data = await resp.json();
     if (data.skipped) {
-      select.innerHTML = '<option value="">Apply Ollama provider first</option>';
+      const msg = '<option value="">Apply Ollama provider first</option>';
+      setSelectOptions(select, msg);
+      if (currentProvider === 'ollama') syncPlayModelSelect(msg);
       if (hint) hint.textContent = data.error || 'Ollama not active';
       if (wakeBtn) wakeBtn.disabled = true;
       return;
     }
     if (!data.success) {
-      select.innerHTML = '<option value="">Ollama unreachable</option>';
+      const msg = '<option value="">Ollama unreachable</option>';
+      setSelectOptions(select, msg);
+      if (currentProvider === 'ollama') syncPlayModelSelect(msg);
       if (hint) hint.textContent = 'Error: ' + (data.error || 'cannot reach Ollama') + ' — try Wake after server is up';
       return;
     }
-    select.innerHTML = data.models.map(m => {
+    const html = data.models.map(m => {
       const label = `${m.name} (${m.params || '?'}, ${m.quant || '?'})`;
       return `<option value="${m.name}"${m.name === selectedModel ? ' selected' : ''}>${label}</option>`;
     }).join('');
-    if (hint) hint.textContent = `${data.models.length} models — Wake loads selected model into VRAM`;
+    setSelectOptions(select, html);
+    if (currentProvider === 'ollama') syncPlayModelSelect(html);
+    const countMsg = `${data.models.length} models — Wake loads selected model into VRAM`;
+    if (hint) hint.textContent = countMsg;
+    if (playHint && currentProvider === 'ollama') playHint.textContent = countMsg;
   } catch (e) {
-    select.innerHTML = '<option value="">Failed to load</option>';
+    const msg = '<option value="">Failed to load</option>';
+    setSelectOptions(select, msg);
+    if (currentProvider === 'ollama') syncPlayModelSelect(msg);
     if (hint) hint.textContent = e.message;
   }
 }
@@ -1363,18 +1865,20 @@ async function loadOllamaModels(selectedModel) {
 async function loadOpenRouterModels(selectedModel) {
   const select = document.getElementById('openrouterModelSelect');
   const hint = document.getElementById('openrouterHint');
-  if (!select) return;
-  const norm = (m) => (m || '').replace(/^openrouter\/openrouter\//, 'openrouter/');
+  const playHint = document.getElementById('playModelHint');
+  const norm = (m) => (m || '').replace(/^openrouter\\/openrouter\\//, 'openrouter/');
   selectedModel = norm(selectedModel);
   try {
     const resp = await fetch('/api/openrouter/models');
     const data = await resp.json();
     if (!data.success) {
-      select.innerHTML = '<option value="">OpenRouter unavailable</option>';
+      const msg = '<option value="">OpenRouter unavailable</option>';
+      setSelectOptions(select, msg);
+      if (currentProvider === 'openrouter') syncPlayModelSelect(msg);
       if (hint) hint.textContent = data.error || 'cannot list models';
       return;
     }
-    const curated = ['openrouter/owl-alpha', 'openrouter/auto', 'anthropic/claude-sonnet-4', 'google/gemini-2.5-pro-preview', 'meta-llama/llama-3.3-70b-instruct'];
+    const curated = ['openrouter/owl-alpha', 'openrouter/auto', 'google/gemini-2.0-flash-001', 'anthropic/claude-sonnet-4', 'google/gemini-2.5-pro-preview', 'meta-llama/llama-3.3-70b-instruct'];
     const sorted = [...data.models].sort((a, b) => {
       const ai = curated.indexOf(a.name);
       const bi = curated.indexOf(b.name);
@@ -1383,16 +1887,22 @@ async function loadOpenRouterModels(selectedModel) {
       if (bi >= 0) return 1;
       return a.name.localeCompare(b.name);
     });
-    select.innerHTML = sorted.slice(0, 80).map(m => {
+    const html = sorted.slice(0, 80).map(m => {
       const label = m.prompt_price_label
         || (m.prompt_price != null && String(m.prompt_price) !== '' ? formatOpenRouterPrice(m.prompt_price) : '');
       const price = label ? ` (${label} in)` : '';
       const sel = norm(m.name) === selectedModel ? ' selected' : '';
       return `<option value="${m.name}"${sel}>${m.name}${price}</option>`;
     }).join('');
-    if (hint) hint.textContent = `${data.models.length} models available`;
+    setSelectOptions(select, html);
+    if (currentProvider === 'openrouter') syncPlayModelSelect(html);
+    const countMsg = `${data.models.length} models available`;
+    if (hint) hint.textContent = countMsg;
+    if (playHint && currentProvider === 'openrouter') playHint.textContent = countMsg;
   } catch (e) {
-    select.innerHTML = '<option value="">Failed to load</option>';
+    const msg = '<option value="">Failed to load</option>';
+    setSelectOptions(select, msg);
+    if (currentProvider === 'openrouter') syncPlayModelSelect(msg);
     if (hint) hint.textContent = e.message;
   }
 }
@@ -1462,15 +1972,16 @@ async function applyPersonality() {
   }
 }
 
-async function applyModel() {
-  const hint = currentProvider === 'ollama'
-    ? document.getElementById('ollamaHint')
-    : document.getElementById('openrouterHint');
-  const select = currentProvider === 'ollama'
-    ? document.getElementById('ollamaModelSelect')
-    : document.getElementById('openrouterModelSelect');
+async function applyModel(source) {
+  const fromPlay = source === 'play';
+  const hint = fromPlay
+    ? document.getElementById('playModelHint')
+    : (currentProvider === 'ollama' ? document.getElementById('ollamaHint') : document.getElementById('openrouterHint'));
+  const select = fromPlay
+    ? document.getElementById('playModelSelect')
+    : (currentProvider === 'ollama' ? document.getElementById('ollamaModelSelect') : document.getElementById('openrouterModelSelect'));
   const model = select?.value;
-  if (!model || model.startsWith('Loading') || model.includes('unreachable') || model.includes('Failed')) {
+  if (!model || model.startsWith('Loading') || model.includes('unreachable') || model.includes('Failed') || model.includes('Apply')) {
     alert('Pick a model from the list first (use Refresh if the dropdown is empty).');
     return;
   }
@@ -1480,7 +1991,7 @@ async function applyModel() {
     ? { provider: 'ollama', model, base_url: cfg.ollama_v1_url }
     : { provider: 'openrouter', model, base_url: cfg.openrouter_url || cfg.llm_base_url };
 
-  const applyBtns = document.querySelectorAll('.config-actions .btn:not(.btn-wake)');
+  const applyBtns = document.querySelectorAll('.config-actions .btn:not(.btn-wake), .play-model-bar .btn');
   applyBtns.forEach(b => { b.disabled = true; });
 
   try {
@@ -1503,11 +2014,14 @@ async function applyModel() {
       document.getElementById('tabOpenRouter')?.classList.toggle('active', result.llm_provider === 'openrouter');
       document.getElementById('panelOllama')?.classList.toggle('active', result.llm_provider === 'ollama');
       document.getElementById('panelOpenRouter')?.classList.toggle('active', result.llm_provider === 'openrouter');
+      document.getElementById('playTabOllama')?.classList.toggle('active', result.llm_provider === 'ollama');
+      document.getElementById('playTabOpenRouter')?.classList.toggle('active', result.llm_provider === 'openrouter');
       const active = document.getElementById('activeModel');
       if (active) active.textContent = formatActiveModel(result.llm_provider, result.llm_model);
       updateMainBadges(cfgCache);
       await loadModelsForProvider(result.llm_provider, result.llm_model);
-      if (hint) hint.innerHTML = '<span class="apply-ok">✓ Applied — ' + escapeHtml(result.llm_model) + '</span>';
+      const okMsg = '✓ Applied — ' + result.llm_model;
+      if (hint) hint.innerHTML = '<span class="apply-ok">' + escapeHtml(okMsg) + '</span>';
     } else {
       if (hint) hint.textContent = 'Apply failed: ' + (result.message || 'unknown');
       alert('Failed: ' + (result.message || 'unknown'));
@@ -1517,6 +2031,144 @@ async function applyModel() {
     alert('Apply failed: ' + e.message);
   } finally {
     applyBtns.forEach(b => { b.disabled = false; });
+  }
+}
+
+async function loadPendingScreenshot() {
+  try {
+    const resp = await fetch('/api/screenshot/pending');
+    const data = await resp.json();
+    const preview = document.getElementById('screenshotPreview');
+    const thumb = document.getElementById('screenshotThumb');
+    const name = document.getElementById('screenshotName');
+    if (data.attached && preview && thumb) {
+      preview.classList.add('visible');
+      thumb.src = data.preview_url + '?t=' + Date.now();
+      if (name) name.textContent = data.filename || 'screenshot';
+    } else if (preview) {
+      preview.classList.remove('visible');
+      if (thumb) thumb.src = '';
+    }
+  } catch (e) { /* ignore */ }
+}
+
+async function clearScreenshot() {
+  await fetch('/api/screenshot/pending', { method: 'DELETE' });
+  loadPendingScreenshot();
+}
+
+async function captureScreenshot() {
+  const btn = event?.target;
+  if (btn) btn.disabled = true;
+  try {
+    const resp = await fetch('/api/screenshot', { method: 'POST' });
+    const data = await resp.json();
+    if (data.success) {
+      loadPendingScreenshot();
+    } else {
+      alert('Capture failed: ' + (data.error || 'unknown'));
+    }
+  } catch (e) {
+    alert('Capture failed: ' + e.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function uploadScreenshotFile(file) {
+  if (!file) return;
+  const form = new FormData();
+  form.append('file', file);
+  try {
+    const resp = await fetch('/api/screenshot/upload', { method: 'POST', body: form });
+    const data = await resp.json();
+    if (data.success) {
+      loadPendingScreenshot();
+    } else {
+      alert('Upload failed: ' + (data.error || 'unknown'));
+    }
+  } catch (e) {
+    alert('Upload failed: ' + e.message);
+  }
+}
+
+function renderMonitorTabs(monitors, activeIndex) {
+  const tabs = document.getElementById('monitorTabs');
+  if (!tabs) return;
+  monitors.forEach((m) => {
+    const btn = tabs.querySelector(`[data-monitor="${m.index}"]`);
+    if (!btn) return;
+    const status = m.connected ? (m.geometry || m.xrandr) : 'offline';
+    btn.textContent = `${m.index} ${m.label}`;
+    btn.title = `${m.xrandr} — ${status}`;
+    btn.classList.toggle('active', m.index === activeIndex);
+    btn.classList.toggle('disconnected', !m.connected);
+  });
+}
+
+function selectMonitorTab(index) {
+  selectedMonitorIndex = index;
+  renderMonitorTabs(monitorCache, selectedMonitorIndex);
+}
+
+async function loadMonitors() {
+  const hint = document.getElementById('monitorHint');
+  try {
+    const resp = await fetch('/api/monitors');
+    const data = await resp.json();
+    if (!data.success) {
+      if (hint) hint.textContent = data.message || 'Could not load monitors';
+      return;
+    }
+    monitorCache = data.monitors || [];
+    selectedMonitorIndex = data.active_index ?? 0;
+    renderMonitorTabs(monitorCache, selectedMonitorIndex);
+    const active = monitorCache.find(m => m.active);
+    const display = data.display || ':0';
+    if (hint) {
+      hint.textContent = active
+        ? `Active: ${active.label} (${active.xrandr}) on ${display}`
+        : `DISPLAY=${display}`;
+    }
+  } catch (e) {
+    if (hint) hint.textContent = 'Monitor list unavailable: ' + e.message;
+  }
+}
+
+async function applyMonitor(restart) {
+  const hint = document.getElementById('monitorHint');
+  const btns = document.querySelectorAll('.play-monitor-bar .btn');
+  btns.forEach(b => { b.disabled = true; });
+  try {
+    if (hint) hint.textContent = restart ? 'Applying monitor + restarting game…' : 'Applying monitor…';
+    const resp = await fetch('/api/monitors', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        index: selectedMonitorIndex,
+        pin_now: true,
+        restart: !!restart,
+      }),
+    });
+    const result = await resp.json();
+    if (result.success) {
+      await loadMonitors();
+      const pinMsg = result.pin?.success
+        ? ' Window moved.'
+        : result.pin?.message
+          ? ' (' + result.pin.message + ')'
+          : '';
+      const restartMsg = result.restart?.success ? ' Game restarting.' : '';
+      if (hint) hint.innerHTML = '<span class="apply-ok">✓ ' + escapeHtml(result.message) + escapeHtml(pinMsg + restartMsg) + '</span>';
+    } else {
+      if (hint) hint.textContent = 'Failed: ' + (result.message || 'unknown');
+      alert('Monitor switch failed: ' + (result.message || 'unknown'));
+    }
+  } catch (e) {
+    if (hint) hint.textContent = 'Error: ' + e.message;
+    alert('Monitor switch failed: ' + e.message);
+  } finally {
+    btns.forEach(b => { b.disabled = false; });
   }
 }
 
@@ -1550,9 +2202,10 @@ async function sendOrder() {
     const result = await resp.json();
     if (result.success) {
       input.value = '';
+      loadPendingScreenshot();
       // WebSocket delivers the chat turn; fallback if disconnected
       if (!ws || ws.readyState !== WebSocket.OPEN) {
-        appendChat(msg, result.reply || '(no reply)', result.id);
+        appendChat(msg, result.reply || '(no reply)', result.id, true, result.screenshot);
       }
       renderOrderQueue(result.orders);
       loadMemory();
@@ -1566,7 +2219,7 @@ async function sendOrder() {
   }
 }
 
-function appendChat(user, reply, id, addToChronicle = true) {
+function appendChat(user, reply, id, addToChronicle = true, hadScreenshot = false) {
   const key = id || (user + '\0' + (reply || ''));
   if (chatSeen.has(key)) return;
   chatSeen.add(key);
@@ -1577,8 +2230,9 @@ function appendChat(user, reply, id, addToChronicle = true) {
   const wrap = document.createElement('div');
   wrap.className = 'chat-turn';
   wrap.dataset.chatId = id || '';
+  const shotTag = hadScreenshot ? ' <span class="chat-shot" title="Screenshot attached">📷</span>' : '';
   wrap.innerHTML =
-    '<div class="chat-bubble user"><span class="chat-label">You,</span> <span class="chat-body">' + escapeHtml(user) + '</span></div>' +
+    (user ? '<div class="chat-bubble user"><span class="chat-label">You,</span> <span class="chat-body">' + escapeHtml(user) + shotTag + '</span></div>' : '') +
     '<div class="chat-bubble overlord"><span class="chat-label">' + escapeHtml(overlordLabel) + '</span> <span class="chat-body">' + escapeHtml(reply || '') + '</span></div>';
   el.appendChild(wrap);
   while (el.querySelectorAll('.chat-turn').length > 24) {
@@ -1612,7 +2266,7 @@ async function loadChat() {
       return;
     }
     for (const m of msgs) {
-      appendChat(m.user, m.reply, m.id || m.ts, false);
+      appendChat(m.user, m.reply, m.id || m.ts, false, m.screenshot);
     }
   } catch (e) { /* ignore */ }
 }
@@ -1678,10 +2332,19 @@ async function clearMemory() {
 }
 
 loadConfig();
+loadMonitors();
 loadOrders();
 loadChat();
 loadMemory();
+loadPendingScreenshot();
+initMapLegend();
 connect();
+
+document.getElementById('screenshotUpload')?.addEventListener('change', (e) => {
+  const file = e.target.files?.[0];
+  if (file) uploadScreenshotFile(file);
+  e.target.value = '';
+});
 
 document.getElementById('orderInput')?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -1689,6 +2352,199 @@ document.getElementById('orderInput')?.addEventListener('keydown', (e) => {
     sendOrder();
   }
 });
+
+// --- Map grid (LLM tile view + player pins) ---
+const MAP_TILE_COLORS = {
+  'T': '#ffd700',
+  '.': '#2d5a27',
+  '+': '#8b4513',
+  '~': '#1565c0',
+  '^': '#1b5e20',
+  'M': '#616161',
+  'X': '#4a148c',
+  '?': '#37474f',
+};
+const MAP_PIN_TYPE_COLORS = {
+  farm: '#4caf50', home: '#ff9800', well: '#29b6f6',
+  stockpile: '#8d6e63', woodcutter: '#795548', custom: '#e91e63',
+};
+
+let mapCache = { rows: [], centerX: 0, centerY: 0, radius: 0, legend: '', pins: [] };
+
+function initMapLegend() {
+  const bar = document.getElementById('mapLegendBar');
+  if (!bar) return;
+  const items = [
+    ['T', 'Throne'], ['.', 'Open'], ['+', 'Room'], ['~', 'Water'],
+    ['^', 'Forest'], ['M', 'Mountain'], ['X', 'Blocked'],
+  ];
+  bar.innerHTML = items.map(([ch, label]) =>
+    `<span class="map-legend-item"><span class="map-legend-swatch" style="background:${MAP_TILE_COLORS[ch] || '#333'}"></span>${label}</span>`
+  ).join('');
+}
+
+function tileColor(ch) {
+  if (MAP_TILE_COLORS[ch]) return MAP_TILE_COLORS[ch];
+  if (/[A-Za-z0-9]/.test(ch)) return '#6d4c41';
+  return '#263238';
+}
+
+function pinAt(x, y) {
+  return mapCache.pins.find(p => p.x === x && p.y === y);
+}
+
+async function refreshMapView() {
+  const status = document.getElementById('mapStatus');
+  try {
+    const resp = await fetch('/api/map');
+    const data = await resp.json();
+    if (data.message && !data.rows?.length) {
+      status.textContent = data.message;
+      document.getElementById('mapEmpty').hidden = false;
+      document.getElementById('mapGrid').hidden = true;
+      mapCache.pins = data.pins || [];
+      renderMapPinList();
+      return;
+    }
+    mapCache = {
+      rows: data.rows || [],
+      centerX: data.centerX ?? 0,
+      centerY: data.centerY ?? 0,
+      radius: data.radius ?? 0,
+      legend: data.legend || '',
+      pins: data.pins || [],
+    };
+    status.textContent = `Center (${mapCache.centerX}, ${mapCache.centerY}) · radius ${mapCache.radius} · ${mapCache.rows.length}×${mapCache.rows[0]?.length || 0} tiles`;
+    document.getElementById('mapEmpty').hidden = true;
+    document.getElementById('mapGrid').hidden = false;
+    renderMapGrid();
+    renderMapPinList();
+  } catch (e) {
+    status.textContent = 'Failed to load map: ' + e.message;
+  }
+}
+
+function renderMapGrid() {
+  const grid = document.getElementById('mapGrid');
+  if (!grid || !mapCache.rows?.length) return;
+  const cellSize = parseInt(document.getElementById('mapCellSize')?.value || '14', 10);
+  const cols = mapCache.rows[0].length;
+  grid.style.gridTemplateColumns = `repeat(${cols}, ${cellSize}px)`;
+  grid.innerHTML = '';
+  const r0 = mapCache.centerY - mapCache.radius;
+  const c0 = mapCache.centerX - mapCache.radius;
+
+  mapCache.rows.forEach((row, ri) => {
+    for (let ci = 0; ci < row.length; ci++) {
+      const ch = row[ci];
+      const wx = c0 + ci;
+      const wy = r0 + ri;
+      const pin = pinAt(wx, wy);
+      const cell = document.createElement('div');
+      cell.className = 'map-cell' + (ch === 'T' ? ' is-throne' : '') + (pin ? ' has-pin' : '');
+      cell.style.width = cellSize + 'px';
+      cell.style.height = cellSize + 'px';
+      cell.style.background = tileColor(ch);
+      if (pin) cell.style.setProperty('--pin-color', pin.color || MAP_PIN_TYPE_COLORS[pin.pin_type] || '#e91e63');
+      const pinNote = pin ? ` · PIN: ${pin.pin_type} ${pin.label}` : '';
+      cell.title = `(${wx}, ${wy}) ${ch}${pinNote}`;
+      cell.dataset.x = String(wx);
+      cell.dataset.y = String(wy);
+      cell.onclick = () => onMapCellClick(wx, wy);
+      grid.appendChild(cell);
+    }
+  });
+}
+
+function renderMapPinList() {
+  const list = document.getElementById('mapPinList');
+  if (!list) return;
+  if (!mapCache.pins.length) {
+    list.innerHTML = '<div style="color:var(--text-dim);font-size:11px;">Click a tile to place a pin. Click again to remove.</div>';
+    return;
+  }
+  list.innerHTML = mapCache.pins.map(p => `
+    <div class="map-pin-item">
+      <span class="map-pin-dot" style="background:${escapeHtml(p.color || MAP_PIN_TYPE_COLORS[p.pin_type] || '#e91e63')}"></span>
+      <div class="map-pin-meta">
+        <div class="map-pin-coords">(${p.x}, ${p.y}) · ${escapeHtml(p.pin_type)}</div>
+        <div class="map-pin-label">${escapeHtml(p.label)}</div>
+      </div>
+      <button class="btn btn-icon" type="button" data-pin-id="${escapeHtml(p.id)}" onclick="removeMapPin(this.dataset.pinId)" title="Remove">✕</button>
+    </div>
+  `).join('');
+}
+
+async function onMapCellClick(x, y) {
+  const existing = pinAt(x, y);
+  if (existing) {
+    await removeMapPin(existing.id);
+    return;
+  }
+  const pinType = document.getElementById('mapPinType')?.value || 'custom';
+  let label = pinType === 'custom' ? prompt('Pin label (optional):', 'build here') : pinType;
+  if (label === null) return;
+  if (!label) label = pinType;
+  try {
+    const resp = await fetch('/api/map/pins', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x, y, label, pin_type: pinType, queue: false }),
+    });
+    const data = await resp.json();
+    if (data.success) {
+      mapCache.pins = data.pins || [];
+      renderMapGrid();
+      renderMapPinList();
+    }
+  } catch (e) {
+    alert('Failed to place pin: ' + e.message);
+  }
+}
+
+async function removeMapPin(pinId) {
+  try {
+    const resp = await fetch('/api/map/pins/' + encodeURIComponent(pinId), { method: 'DELETE' });
+    const data = await resp.json();
+    mapCache.pins = data.pins || [];
+    renderMapGrid();
+    renderMapPinList();
+  } catch (e) {
+    alert('Failed to remove pin: ' + e.message);
+  }
+}
+
+async function clearAllMapPins() {
+  if (!mapCache.pins.length) return;
+  if (!confirm('Remove all map pins?')) return;
+  try {
+    const resp = await fetch('/api/map/pins', { method: 'DELETE' });
+    const data = await resp.json();
+    mapCache.pins = data.pins || [];
+    renderMapGrid();
+    renderMapPinList();
+  } catch (e) {
+    alert('Failed to clear pins: ' + e.message);
+  }
+}
+
+async function queueAllMapPins() {
+  if (!mapCache.pins.length) {
+    alert('Place at least one pin first.');
+    return;
+  }
+  try {
+    const resp = await fetch('/api/map/pins/queue', { method: 'POST' });
+    const data = await resp.json();
+    if (data.success) {
+      renderOrderQueue(data.orders);
+      const status = document.getElementById('mapStatus');
+      if (status) status.textContent = `Queued ${data.queued?.length || 0} pin(s) for the Overlord.`;
+    }
+  } catch (e) {
+    alert('Failed to queue pins: ' + e.message);
+  }
+}
 </script>
 </body>
 </html>

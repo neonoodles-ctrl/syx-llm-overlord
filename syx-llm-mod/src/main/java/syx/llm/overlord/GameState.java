@@ -25,6 +25,11 @@ public class GameState {
     public Map<String, Integer> gameTime = new LinkedHashMap<>();
     public Map<String, Double> gameSpeed = new LinkedHashMap<>();
     public Map<String, Integer> throne = new LinkedHashMap<>();
+    public int mapCenterX;
+    public int mapCenterY;
+    public int mapRadius;
+    public String mapLegend = "";
+    public List<String> mapRows = new ArrayList<>();
     public List<String> errors = new ArrayList<>();
 
     /** Build JSON directly from primitive maps. No reflection, no recursion, bounded. */
@@ -42,6 +47,11 @@ public class GameState {
         appendIntMap(sb, "gameTime", gameTime);
         appendDoubleMap(sb, "gameSpeed", gameSpeed);
         appendIntMap(sb, "throne", throne);
+        sb.append("\"mapCenterX\":").append(mapCenterX).append(',');
+        sb.append("\"mapCenterY\":").append(mapCenterY).append(',');
+        sb.append("\"mapRadius\":").append(mapRadius).append(',');
+        sb.append("\"mapLegend\":\"").append(escape(mapLegend)).append("\",");
+        appendStringList(sb, "mapRows", mapRows);
         sb.append("\"errors\":[");
         for (int i = 0; i < errors.size(); i++) {
             if (i > 0) sb.append(',');
@@ -72,6 +82,17 @@ public class GameState {
             sb.append('"').append(escape(e.getKey())).append("\":").append(num(e.getValue()));
         }
         sb.append("},");
+    }
+
+    private void appendStringList(StringBuilder sb, String name, List<String> list) {
+        sb.append('"').append(name).append("\":[");
+        for (int i = 0; i < list.size(); i++) {
+            if (i > 0) {
+                sb.append(',');
+            }
+            sb.append('"').append(escape(list.get(i))).append('"');
+        }
+        sb.append("],");
     }
 
     private void appendStringMap(StringBuilder sb, String name, Map<String, String> map) {

@@ -84,22 +84,26 @@ class OverlordMemory:
         self.append(text, kind="tick", tick=tick, day=day)
 
         for cmd, res in zip(commands, results):
-            if not res.get("success"):
-                self.append(
-                    f"FAILED {cmd.get('action')} {cmd.get('target')} "
-                    f"at ({cmd.get('x')},{cmd.get('y')}): {res.get('message', '')[:150]}",
-                    kind="failure",
-                    tick=tick,
-                    day=day,
+            if res.get("success"):
+                continue
+            msg = str(res.get("message") or "")
+            if msg.startswith("BLOCKED:"):
+                continue
+            self.append(
+                f"FAILED {cmd.get('action')} {cmd.get('target')} "
+                f"at ({cmd.get('x')},{cmd.get('y')}): {res.get('message', '')[:150]}",
+                kind="failure",
+                tick=tick,
+                day=day,
+            )
+            if knowledge is not None:
+                knowledge.record_failure(
+                    action=str(cmd.get("action") or "build"),
+                    target=cmd.get("target"),
+                    x=cmd.get("x"),
+                    y=cmd.get("y"),
+                    message=str(res.get("message") or ""),
                 )
-                if knowledge is not None:
-                    knowledge.record_failure(
-                        action=str(cmd.get("action") or "build"),
-                        target=cmd.get("target"),
-                        x=cmd.get("x"),
-                        y=cmd.get("y"),
-                        message=str(res.get("message") or ""),
-                    )
 
     def log_order(self, message: str) -> None:
         self.append(f"Player order: {message}", kind="order")
@@ -137,9 +141,16 @@ class OverlordMemory:
         self.path.write_text("", encoding="utf-8")
 
     def _trim(self) -> None:
-        items = self.entries(limit=MAX_ENTRIES + 100)
+        items = self.entries(limit=MAX_ENTRIES + 200)
         if len(items) <= MAX_ENTRIES:
             return
+        pinned = [e for e in items if e.get("kind") in ("failure", "blocked")]
+        rest = [e for e in items if e.get("kind") not in ("failure", "blocked")]
+        max_pinned = MAX_ENTRIES // 2
+        pinned = pinned[-max_pinned:]
+        budget = MAX_ENTRIES - len(pinned)
+        trimmed = rest[-budget:] if budget > 0 else []
+        combined = sorted(trimmed + pinned, key=lambda e: e.get("ts", ""))
         with open(self.path, "w", encoding="utf-8") as f:
-            for e in items[-MAX_ENTRIES:]:
+            for e in combined:
                 f.write(json.dumps(e, ensure_ascii=False) + "\n")

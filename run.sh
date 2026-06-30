@@ -38,8 +38,9 @@ ensure_mod() {
 }
 
 start_bridge() {
-  if curl -sf "http://localhost:3847/api/health" >/dev/null 2>&1; then
-    log "Bridge already running on :3847"
+  local port="${SYX_BRIDGE_PORT:-3847}"
+  if curl -sf "http://localhost:${port}/api/health" >/dev/null 2>&1; then
+    log "Bridge already running on :${port}"
     return 0
   fi
 
@@ -52,14 +53,15 @@ start_bridge() {
   source "${VENV}/bin/activate"
 
   mkdir -p "${ROOT}/logs"
+  export SYX_BRIDGE_PORT="${port}"
   cd "${ROOT}/bridge"
   nohup python -m bridge >>"${ROOT}/logs/bridge.log" 2>&1 &
   echo $! >"${ROOT}/logs/bridge.pid"
   log "Bridge starting (PID $(cat "${ROOT}/logs/bridge.pid")) — log: ${ROOT}/logs/bridge.log"
 
   for _ in $(seq 1 30); do
-    if curl -sf "http://localhost:3847/api/health" >/dev/null 2>&1; then
-      log "Bridge ready: http://localhost:3847"
+    if curl -sf "http://localhost:${port}/api/health" >/dev/null 2>&1; then
+      log "Bridge ready: http://localhost:${port}"
       return 0
     fi
     sleep 1

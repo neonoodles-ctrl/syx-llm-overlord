@@ -87,6 +87,21 @@ class OverlordKnowledge:
         if persist:
             self._save()
 
+    def reset_for_new_game(self, throne: dict | None = None, day: int | None = None) -> None:
+        """Drop coord blacklist for a fresh settlement; keep learned pattern facts."""
+        self._data["blacklist"] = []
+        self._data["session"] = {
+            "throne": throne,
+            "day": day,
+            "started": datetime.now(timezone.utc).isoformat(),
+        }
+        self._save()
+
+    def clear_all(self) -> None:
+        """Full reset including facts."""
+        self._data = {"version": 1, "blacklist": [], "facts": []}
+        self._save()
+
     def record_fact(self, text: str) -> None:
         """Manual or LLM-suggested durable fact (deduped)."""
         text = text.strip()
@@ -190,6 +205,37 @@ class OverlordKnowledge:
             "y": int(m.group(4)),
             "message": m.group(5),
         }
+
+    def is_blocked(
+        self,
+        action: str,
+        target: str | None,
+        x: int | None,
+        y: int | None,
+    ) -> tuple[bool, str | None]:
+        """True if command should be rejected pre-flight."""
+        if action != "build" or x is None or y is None:
+            return False, None
+
+        # Any build blacklisted at this coordinate
+        for entry in self._data.get("blacklist", []):
+            if int(entry.get("count", 0)) < BLACKLIST_AFTER:
+                continue
+            if entry.get("x") == x and entry.get("y") == y:
+                return True, (
+                    f"blacklisted coordinate ({x},{y}) — "
+                    f"{entry.get('count')}x {entry.get('reason', 'failed')}"
+                )
+
+        # Exact action+target+coord match
+        key = self._bl_key(action, target or "", x, y)
+        for entry in self._data.get("blacklist", []):
+            if entry.get("key") == key and int(entry.get("count", 0)) >= BLACKLIST_AFTER:
+                return True, (
+                    f"blacklisted {target} @ ({x},{y}) — "
+                    f"{entry.get('count')}x {entry.get('reason', 'failed')}"
+                )
+        return False, None
 
     def for_prompt(self, limit_blacklist: int = 25, limit_facts: int = 12) -> str:
         bl = [

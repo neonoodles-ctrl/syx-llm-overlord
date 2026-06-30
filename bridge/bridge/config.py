@@ -13,6 +13,9 @@ from .personalities import DEFAULT_PERSONALITY, normalize_personality_id
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
 DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://10.0.10.151:11434/v1")
 DEFAULT_OPENROUTER_URL = "https://openrouter.ai/api/v1"
+DEFAULT_OPENROUTER_FALLBACK = os.environ.get(
+    "SYX_LLM_FALLBACK_MODEL", "google/gemini-2.5-flash"
+)
 
 
 def normalize_model_id(provider: str, model: str) -> str:
@@ -32,6 +35,7 @@ class LLMConfig:
     base_url: str | None = None
     max_tokens: int = 2048
     temperature: float = 0.7
+    fallback_model: str | None = None
 
     # Provider presets: maps provider name -> (base_url, default_model)
     PROVIDER_PRESETS: dict = field(default_factory=lambda: {
@@ -84,11 +88,20 @@ class OverlordConfig:
 
 
 @dataclass
+class VisionConfig:
+    enabled: bool = False
+    every_n_ticks: int = 5
+    max_width: int = 1024
+    model: str | None = None  # vision-capable model; defaults to llm.fallback_model
+
+
+@dataclass
 class Config:
     llm: LLMConfig = field(default_factory=LLMConfig)
     game: GameConfig = field(default_factory=GameConfig)
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
     overlord: OverlordConfig = field(default_factory=OverlordConfig)
+    vision: VisionConfig = field(default_factory=VisionConfig)
 
 
 def load_config(path: str | Path = "config.yaml") -> Config:
@@ -105,6 +118,7 @@ def load_config(path: str | Path = "config.yaml") -> Config:
     game_data = data.get("game", {})
     dash_data = data.get("dashboard", {})
     overlord_data = data.get("overlord", {})
+    vision_data = data.get("vision", {})
     provider = llm_data.get("provider", "openai")
     model = normalize_model_id(provider, llm_data.get("model", "gpt-4o"))
     if provider == "openrouter":
@@ -114,6 +128,18 @@ def load_config(path: str | Path = "config.yaml") -> Config:
     else:
         api_key = llm_data.get("api_key") or os.environ.get("OPENAI_API_KEY", "")
 
+    fallback = llm_data.get("fallback_model")
+    if fallback is None and provider == "openrouter":
+        fallback = DEFAULT_OPENROUTER_FALLBACK
+    if fallback:
+        fallback = normalize_model_id(provider, fallback)
+
+    vision_model = vision_data.get("model")
+    if vision_model:
+        vision_model = normalize_model_id(provider, vision_model)
+    elif fallback:
+        vision_model = fallback
+
     return Config(
         llm=LLMConfig(
             provider=provider,
@@ -122,20 +148,30 @@ def load_config(path: str | Path = "config.yaml") -> Config:
             base_url=llm_data.get("base_url"),
             max_tokens=llm_data.get("max_tokens", 2048),
             temperature=llm_data.get("temperature", 0.7),
+            fallback_model=fallback,
         ),
         game=GameConfig(
-            mod_url=game_data.get("mod_url", "http://localhost:47823"),
+            mod_url=os.environ.get(
+                "SYX_MOD_URL",
+                game_data.get("mod_url", "http://localhost:47823"),
+            ),
             poll_interval_seconds=game_data.get("poll_interval_seconds", 5),
             command_rate_limit=game_data.get("command_rate_limit", 3),
         ),
         dashboard=DashboardConfig(
-            port=dash_data.get("port", 3847),
+            port=int(os.environ.get("SYX_BRIDGE_PORT", dash_data.get("port", 3847))),
             ws_enabled=dash_data.get("ws_enabled", True),
         ),
         overlord=OverlordConfig(
             personality=normalize_personality_id(
                 overlord_data.get("personality", DEFAULT_PERSONALITY)
             ),
+        ),
+        vision=VisionConfig(
+            enabled=bool(vision_data.get("enabled", False)),
+            every_n_ticks=int(vision_data.get("every_n_ticks", 5)),
+            max_width=int(vision_data.get("max_width", 1024)),
+            model=vision_model,
         ),
     )
 
