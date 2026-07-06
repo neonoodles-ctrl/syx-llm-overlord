@@ -8,14 +8,53 @@ from typing import Any
 
 import yaml
 
-from .personalities import DEFAULT_PERSONALITY, normalize_personality_id
+from .personalities import (
+    DEFAULT_PERSONA,
+    DEFAULT_GAME_MODE,
+    DEFAULT_PERSONALITY,
+    normalize_persona_id,
+    normalize_game_mode_id,
+    normalize_personality_id,
+    resolve_overlord_settings,
+)
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
 DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://10.0.10.151:11434/v1")
 DEFAULT_OPENROUTER_URL = "https://openrouter.ai/api/v1"
+DEFAULT_OPENROUTER_FREE_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 DEFAULT_OPENROUTER_FALLBACK = os.environ.get(
-    "SYX_LLM_FALLBACK_MODEL", "google/gemini-2.5-flash"
+    "SYX_LLM_FALLBACK_MODEL", "google/gemma-4-26b-a4b-it:free"
 )
+
+# Free via OpenRouter preview / $0 pricing but no :free suffix (may be absent from /models API)
+OPENROUTER_FREE_ALLOWLIST = frozenset({
+    "openrouter/owl-alpha",
+    "openrouter/free",
+})
+
+
+def openrouter_price_is_zero(price: str | float | None) -> bool:
+    """True when OpenRouter pricing field is explicitly zero (free tier)."""
+    if price is None:
+        return False
+    try:
+        return float(price) == 0.0
+    except (TypeError, ValueError):
+        return False
+
+
+def is_openrouter_free_model(
+    model_id: str,
+    prompt_price: str | float | None = None,
+    completion_price: str | float | None = None,
+) -> bool:
+    """OpenRouter free models use :free suffix, zero pricing, or explicit allowlist."""
+    mid = (model_id or "").strip().lower()
+    if mid in OPENROUTER_FREE_ALLOWLIST:
+        return True
+    if mid.endswith(":free"):
+        return True
+    return openrouter_price_is_zero(prompt_price) and openrouter_price_is_zero(completion_price)
 
 
 def normalize_model_id(provider: str, model: str) -> str:
@@ -44,7 +83,7 @@ class LLMConfig:
         "ollama":      ("http://localhost:11434/v1", "llama3"),
         "together":    ("https://api.together.xyz/v1", "meta-llama/Llama-3-70b-chat-hf"),
         "groq":        ("https://api.groq.com/openai/v1", "llama3-70b-8192"),
-        "openrouter":  ("https://openrouter.ai/api/v1", "meta-llama/llama-3-70b-instruct"),
+        "openrouter":  ("https://openrouter.ai/api/v1", DEFAULT_OPENROUTER_FREE_MODEL),
         "deepseek":    ("https://api.deepseek.com/v1", "deepseek-chat"),
         "fireworks":   ("https://api.fireworks.ai/inference/v1", "accounts/fireworks/models/llama-v3-70b-instruct"),
         "api":         (None, "gpt-4o"),  # generic -- user provides base_url + api_key
@@ -84,7 +123,19 @@ class DashboardConfig:
 
 @dataclass
 class OverlordConfig:
-    personality: str = DEFAULT_PERSONALITY
+    persona: str = DEFAULT_PERSONA
+    game_mode: str = DEFAULT_GAME_MODE
+
+    @property
+    def personality(self) -> str:
+        """Legacy alias — persona id only."""
+        return self.persona
+
+
+@dataclass
+class MapConfig:
+    """Dashboard shows full settlement grid; LLM gets mapRows only when llm_enabled."""
+    llm_enabled: bool = False
 
 
 @dataclass
@@ -102,6 +153,7 @@ class Config:
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
     overlord: OverlordConfig = field(default_factory=OverlordConfig)
     vision: VisionConfig = field(default_factory=VisionConfig)
+    map: MapConfig = field(default_factory=MapConfig)
 
 
 def load_config(path: str | Path = "config.yaml") -> Config:
@@ -119,6 +171,7 @@ def load_config(path: str | Path = "config.yaml") -> Config:
     dash_data = data.get("dashboard", {})
     overlord_data = data.get("overlord", {})
     vision_data = data.get("vision", {})
+    map_data = data.get("map", {})
     provider = llm_data.get("provider", "openai")
     model = normalize_model_id(provider, llm_data.get("model", "gpt-4o"))
     if provider == "openrouter":
@@ -140,6 +193,7 @@ def load_config(path: str | Path = "config.yaml") -> Config:
     elif fallback:
         vision_model = fallback
 
+    persona_id, game_mode_id = resolve_overlord_settings(overlord_data)
     return Config(
         llm=LLMConfig(
             provider=provider,
@@ -163,15 +217,17 @@ def load_config(path: str | Path = "config.yaml") -> Config:
             ws_enabled=dash_data.get("ws_enabled", True),
         ),
         overlord=OverlordConfig(
-            personality=normalize_personality_id(
-                overlord_data.get("personality", DEFAULT_PERSONALITY)
-            ),
+            persona=normalize_persona_id(persona_id),
+            game_mode=normalize_game_mode_id(game_mode_id),
         ),
         vision=VisionConfig(
             enabled=bool(vision_data.get("enabled", False)),
             every_n_ticks=int(vision_data.get("every_n_ticks", 5)),
             max_width=int(vision_data.get("max_width", 1024)),
             model=vision_model,
+        ),
+        map=MapConfig(
+            llm_enabled=bool(map_data.get("llm_enabled", False)),
         ),
     )
 
@@ -246,10 +302,27 @@ def save_llm_settings(
 
 
 def save_personality_settings(*, personality: str, path: Path | None = None) -> None:
+    """Save persona (voice) — not game mode."""
+    save_persona_settings(persona=personality, path=path)
+
+
+def save_persona_settings(*, persona: str, path: Path | None = None) -> None:
     config_path = path or CONFIG_PATH
     data = load_config_file(config_path) if config_path.exists() else {}
     overlord = data.setdefault("overlord", {})
-    overlord["personality"] = normalize_personality_id(personality)
+    pid = normalize_persona_id(persona)
+    overlord["persona"] = pid
+    overlord["personality"] = pid  # legacy readers
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(config_path, "w") as f:
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+
+def save_game_mode_settings(*, game_mode: str, path: Path | None = None) -> None:
+    config_path = path or CONFIG_PATH
+    data = load_config_file(config_path) if config_path.exists() else {}
+    overlord = data.setdefault("overlord", {})
+    overlord["game_mode"] = normalize_game_mode_id(game_mode)
     config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config_path, "w") as f:
         yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)

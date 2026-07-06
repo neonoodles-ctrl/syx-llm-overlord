@@ -6,8 +6,11 @@ import unittest
 from bridge.command_guard import (
     validate_command,
     apply_timeout_backoff,
+    apply_gameplay_adjustments,
     filter_commands,
     is_timeout_result,
+    record_build_outcome,
+    reset_session_guard,
 )
 from bridge.knowledge import OverlordKnowledge
 from bridge.models import Command, GameState
@@ -68,6 +71,44 @@ class CommandGuardTests(unittest.TestCase):
 
     def test_is_timeout_result(self):
         self.assertTrue(is_timeout_result("Command timed out waiting for game thread"))
+
+    def test_blocks_home_when_headroom_met(self):
+        reset_session_guard()
+        state = _state(pop=5)
+        state.roomCounts = {"home": 8}
+        cmd = Command(action="build", target="home", x=402, y=160)
+        ok, reason = validate_command(cmd, state)
+        self.assertFalse(ok)
+        self.assertIn("headroom", reason or "")
+
+    def test_apply_gameplay_adjustments_when_paused(self):
+        state = _state()
+        state.gameSpeed = {"paused": 1.0, "target": 0.0, "actual": 0.0}
+        cmds = [Command(action="build", target="farm_grain", x=402, y=160)]
+        out, note = apply_gameplay_adjustments(cmds, state)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].action, "set_speed")
+        self.assertIn("set_speed", note or "")
+
+    def test_blocks_build_when_construction_pending(self):
+        state = _state()
+        state.construction = {"instances": 1, "area": 4}
+        cmd = Command(action="build", target="home", x=402, y=160)
+        ok, reason = validate_command(cmd, state)
+        self.assertFalse(ok)
+        self.assertIn("construction in progress", reason or "")
+
+    def test_apply_gameplay_strips_builds_when_construction_pending(self):
+        state = _state()
+        state.construction = {"instances": 2, "area": 8}
+        cmds = [
+            Command(action="build", target="farm_grain", x=402, y=160),
+            Command(action="set_speed", params={"value": 2}),
+        ]
+        out, note = apply_gameplay_adjustments(cmds, state)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].action, "set_speed")
+        self.assertIn("construction", note or "")
 
 
 if __name__ == "__main__":

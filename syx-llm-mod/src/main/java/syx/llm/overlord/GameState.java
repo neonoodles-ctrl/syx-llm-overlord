@@ -20,6 +20,7 @@ public class GameState {
     public Map<String, Integer> resources = new LinkedHashMap<>();
     public Map<String, Double> happiness = new LinkedHashMap<>();
     public Map<String, Integer> roomCounts = new LinkedHashMap<>();
+    public Map<String, Integer> construction = new LinkedHashMap<>();
     public Map<String, Integer> military = new LinkedHashMap<>();
     public Map<String, String> diplomacy = new LinkedHashMap<>();
     public Map<String, Integer> gameTime = new LinkedHashMap<>();
@@ -28,6 +29,11 @@ public class GameState {
     public int mapCenterX;
     public int mapCenterY;
     public int mapRadius;
+    public boolean mapFull;
+    public int mapX1;
+    public int mapY1;
+    public int mapX2;
+    public int mapY2;
     public String mapLegend = "";
     public List<String> mapRows = new ArrayList<>();
     public List<String> errors = new ArrayList<>();
@@ -42,6 +48,7 @@ public class GameState {
         appendIntMap(sb, "resources", resources);
         appendDoubleMap(sb, "happiness", happiness);
         appendIntMap(sb, "roomCounts", roomCounts);
+        appendIntMap(sb, "construction", construction);
         appendIntMap(sb, "military", military);
         appendStringMap(sb, "diplomacy", diplomacy);
         appendIntMap(sb, "gameTime", gameTime);
@@ -50,6 +57,11 @@ public class GameState {
         sb.append("\"mapCenterX\":").append(mapCenterX).append(',');
         sb.append("\"mapCenterY\":").append(mapCenterY).append(',');
         sb.append("\"mapRadius\":").append(mapRadius).append(',');
+        sb.append("\"mapFull\":").append(mapFull).append(',');
+        sb.append("\"mapX1\":").append(mapX1).append(',');
+        sb.append("\"mapY1\":").append(mapY1).append(',');
+        sb.append("\"mapX2\":").append(mapX2).append(',');
+        sb.append("\"mapY2\":").append(mapY2).append(',');
         sb.append("\"mapLegend\":\"").append(escape(mapLegend)).append("\",");
         appendStringList(sb, "mapRows", mapRows);
         sb.append("\"errors\":[");

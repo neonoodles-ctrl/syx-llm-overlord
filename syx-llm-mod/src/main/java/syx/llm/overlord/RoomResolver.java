@@ -29,7 +29,11 @@ final class RoomResolver {
             case "stockpile", "stockpile_crates", "crates", "granary" -> rooms.STOCKPILE;
             case "home", "housing", "house", "settler_tent", "tent", "shelter" -> rooms.HOME;
             case "well" -> first(rooms.WELLS);
-            case "farm" -> first(rooms.FARMS);
+            case "farm", "farm_grain", "grain", "food" -> resolveFoodFarm(rooms);
+            case "farm_cotton", "cotton" -> findByKey(rooms, "COTTON");
+            case "farm_veg", "veg", "vegetable" -> findByKey(rooms, "VEG");
+            case "farm_herb", "herb" -> findByKey(rooms, "HERB");
+            case "farm_mushroom", "mushroom" -> findByKey(rooms, "MUSHROOM");
             case "fishery", "fish" -> first(rooms.FISHERIES);
             case "hunter" -> first(rooms.HUNTERS);
             case "pasture" -> first(rooms.PASTURES);
@@ -83,5 +87,37 @@ final class RoomResolver {
         }
         Object value = list.get(0);
         return value instanceof RoomBlueprintImp blueprint ? blueprint : null;
+    }
+
+    /** Prefer grain/veg food farms — generic `farm` must not default to cotton/industry. */
+    private static RoomBlueprintImp resolveFoodFarm(ROOMS rooms) {
+        String[] prefer = {"GRAIN", "WHEAT", "VEG", "MUSHROOM", "HERB", "FRUIT"};
+        for (String keyword : prefer) {
+            RoomBlueprintImp bp = findByKey(rooms, keyword);
+            if (bp != null && bp.key.contains("FARM")) {
+                return bp;
+            }
+        }
+        for (RoomBlueprintImp blueprint : rooms.imps()) {
+            String key = blueprint.key.toUpperCase(Locale.ROOT);
+            if (!key.contains("FARM")) {
+                continue;
+            }
+            if (key.contains("COTTON") || key.contains("FLAX") || key.contains("INDUSTRY")) {
+                continue;
+            }
+            return blueprint;
+        }
+        return first(rooms.FARMS);
+    }
+
+    private static RoomBlueprintImp findByKey(ROOMS rooms, String keyword) {
+        String needle = keyword.toUpperCase(Locale.ROOT);
+        for (RoomBlueprintImp blueprint : rooms.imps()) {
+            if (blueprint.key.toUpperCase(Locale.ROOT).contains(needle)) {
+                return blueprint;
+            }
+        }
+        return null;
     }
 }

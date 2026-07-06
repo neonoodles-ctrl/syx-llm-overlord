@@ -22,7 +22,8 @@ public class LlmOverlordInstance implements SCRIPT_INSTANCE {
     private static final long COMMAND_TIMEOUT_MS = 10_000;
     /** One command per game tick; builds need spacing to avoid TmpArea / PlacerItemSingle crashes. */
     private static final int MAX_COMMANDS_PER_TICK = 1;
-    private static final int BUILD_COOLDOWN_TICKS = 20;
+    /** ~5s at 60fps between blueprint placements (game thread update calls). */
+    private static final int BUILD_COOLDOWN_TICKS = 300;
     private static final Gson GSON = new Gson();
 
     private int lastBuildTick = -999;

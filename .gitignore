@@ -20,3 +20,9 @@ logs/
 wiki/memory/live-log.md
 wiki/memory/knowledge.md
 saves/
+
+# Cursor IDE state — not part of the project
+.cursor/
+
+# Runtime QA artifacts (bridge/scripts/map_dashboard_qa.py output)
+bridge/output/
