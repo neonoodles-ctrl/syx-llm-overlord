@@ -49,13 +49,19 @@ start_bridge() {
     log "Run ./install.sh first"
     exit 1
   fi
-  # shellcheck source=/dev/null
-  source "${VENV}/bin/activate"
+
+  # Cursor AppImage can hijack .venv/bin/python — use system Python + venv site-packages.
+  VENV_SITE="${VENV}/lib/python3.14/site-packages"
+  BRIDGE_PY="/usr/bin/python3.14"
+  if [[ ! -x "${BRIDGE_PY}" ]]; then
+    BRIDGE_PY="$(command -v python3.14 || command -v python3)"
+  fi
 
   mkdir -p "${ROOT}/logs"
   export SYX_BRIDGE_PORT="${port}"
+  export PYTHONPATH="${VENV_SITE}${PYTHONPATH:+:${PYTHONPATH}}"
   cd "${ROOT}/bridge"
-  nohup python -m bridge >>"${ROOT}/logs/bridge.log" 2>&1 &
+  nohup "${BRIDGE_PY}" -m bridge >>"${ROOT}/logs/bridge.log" 2>&1 &
   echo $! >"${ROOT}/logs/bridge.pid"
   log "Bridge starting (PID $(cat "${ROOT}/logs/bridge.pid")) — log: ${ROOT}/logs/bridge.log"
 

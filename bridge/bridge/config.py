@@ -1,9 +1,10 @@
 """Configuration loader for the bridge service."""
 from __future__ import annotations
 
+import logging
 import os
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from dataclasses import dataclass, field
 from typing import Any
 
 import yaml
@@ -108,6 +109,31 @@ class LLMConfig:
         return url, key
 
 
+logger = logging.getLogger("syx-overlord.config")
+
+DEFAULT_OLLAMA_FALLBACK_MODEL = os.environ.get("SYX_OLLAMA_MODEL", "qwen2.5:14b")
+
+
+def ensure_llm_config(config: LLMConfig) -> LLMConfig:
+    """Keep bridge/dashboard up when cloud keys are missing — fall back to Ollama."""
+    _, key = config.resolve()
+    if config.provider == "openrouter" and not (key or "").strip():
+        logger.warning(
+            "OPENROUTER_API_KEY not set — falling back to Ollama (%s). "
+            "Set OPENROUTER_API_KEY in .env or switch provider in bridge/config.yaml.",
+            DEFAULT_OLLAMA_FALLBACK_MODEL,
+        )
+        return replace(
+            config,
+            provider="ollama",
+            model=DEFAULT_OLLAMA_FALLBACK_MODEL,
+            base_url=DEFAULT_OLLAMA_URL,
+            api_key="",
+            fallback_model=None,
+        )
+    return config
+
+
 @dataclass
 class GameConfig:
     mod_url: str = "http://localhost:47823"
@@ -194,8 +220,8 @@ def load_config(path: str | Path = "config.yaml") -> Config:
         vision_model = fallback
 
     persona_id, game_mode_id = resolve_overlord_settings(overlord_data)
-    return Config(
-        llm=LLMConfig(
+    llm = ensure_llm_config(
+        LLMConfig(
             provider=provider,
             model=model,
             api_key=api_key,
@@ -203,7 +229,10 @@ def load_config(path: str | Path = "config.yaml") -> Config:
             max_tokens=llm_data.get("max_tokens", 2048),
             temperature=llm_data.get("temperature", 0.7),
             fallback_model=fallback,
-        ),
+        )
+    )
+    return Config(
+        llm=llm,
         game=GameConfig(
             mod_url=os.environ.get(
                 "SYX_MOD_URL",
