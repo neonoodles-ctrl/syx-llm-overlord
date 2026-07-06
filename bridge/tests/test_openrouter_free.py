@@ -1,5 +1,10 @@
 """OpenRouter free-tier model detection."""
+from unittest.mock import patch
+
+from fastapi.testclient import TestClient
+
 from bridge.config import LLMConfig, ensure_llm_config, is_openrouter_free_model, openrouter_price_is_zero
+from bridge.main import app
 
 
 def test_openrouter_price_is_zero():
@@ -26,3 +31,20 @@ def test_ensure_llm_config_openrouter_without_key_falls_back_to_ollama(monkeypat
     out = ensure_llm_config(cfg)
     assert out.provider == "ollama"
     assert out.model == "qwen2.5:14b"
+
+
+def test_update_llm_config_rejects_paid_openrouter_model():
+    with patch("bridge.main.openrouter_api_key", return_value="sk-test"):
+        with patch("bridge.main.save_llm_settings") as save_mock:
+            with TestClient(app) as client:
+                resp = client.post(
+                    "/api/config/llm",
+                    json={
+                        "provider": "openrouter",
+                        "model": "meta-llama/llama-3.3-70b-instruct",
+                    },
+                )
+    data = resp.json()
+    assert data["success"] is False
+    assert "free" in data["message"].lower()
+    save_mock.assert_not_called()

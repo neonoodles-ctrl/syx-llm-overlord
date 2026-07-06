@@ -1098,6 +1098,14 @@ async def update_llm_config(body: LLMUpdateRequest):
         if body.provider == "openrouter":
             if not openrouter_api_key():
                 return {"success": False, "message": "OPENROUTER_API_KEY not set in environment"}
+            if not is_openrouter_free_model(body.model):
+                return {
+                    "success": False,
+                    "message": (
+                        f"Only OpenRouter :free models allowed — "
+                        f"{body.model} is not on the free tier"
+                    ),
+                }
             base_url = body.base_url or DEFAULT_OPENROUTER_URL
         elif body.provider == "ollama":
             base_url = body.base_url or DEFAULT_OLLAMA_URL

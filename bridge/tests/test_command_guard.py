@@ -11,6 +11,7 @@ from bridge.command_guard import (
     is_timeout_result,
     record_build_outcome,
     reset_session_guard,
+    _has_forest_near_throne,
 )
 from bridge.knowledge import OverlordKnowledge
 from bridge.models import Command, GameState
@@ -109,6 +110,41 @@ class CommandGuardTests(unittest.TestCase):
         self.assertEqual(len(out), 1)
         self.assertEqual(out[0].action, "set_speed")
         self.assertIn("construction", note or "")
+
+    def test_forest_near_throne_uses_map_full_origin(self):
+        """mapFull exports index rows from mapX1/mapY1, not mapCenter - radius."""
+        rows = ["." * 60 for _ in range(120)]
+        row = list(rows[115])
+        row[50] = "^"
+        rows[115] = "".join(row)
+        state = GameState(
+            throne={"x": 120, "y": 180},
+            mapRows=rows,
+            mapRadius=40,
+            mapCenterX=120,
+            mapCenterY=180,
+            mapFull=True,
+            mapX1=50,
+            mapY1=50,
+            mapX2=109,
+            mapY2=169,
+        )
+        self.assertTrue(_has_forest_near_throne(state))
+
+    def test_forest_near_throne_false_without_forest_tiles(self):
+        state = GameState(
+            throne={"x": 120, "y": 180},
+            mapRows=["." * 10 for _ in range(10)],
+            mapRadius=40,
+            mapCenterX=120,
+            mapCenterY=180,
+            mapFull=True,
+            mapX1=50,
+            mapY1=50,
+            mapX2=59,
+            mapY2=59,
+        )
+        self.assertFalse(_has_forest_near_throne(state))
 
 
 if __name__ == "__main__":

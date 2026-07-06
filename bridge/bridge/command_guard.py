@@ -267,14 +267,13 @@ def _has_forest_near_throne(state: GameState) -> bool:
     tx, ty = _throne_xy(state)
     if tx is None or ty is None or not state.mapRows:
         return False
-    r = state.mapRadius
-    cx, cy = state.mapCenterX, state.mapCenterY
+    ox, oy = _map_origin(state)
     for row_i, line in enumerate(state.mapRows):
         for col_i, ch in enumerate(line):
             if ch not in FOREST_TILE_CHARS:
                 continue
-            wx = cx - r + col_i
-            wy = cy - r + row_i
+            wx = ox + col_i
+            wy = oy + row_i
             if _distance(wx, wy, tx, ty) <= MAX_THRONE_DISTANCE:
                 return True
     return False
