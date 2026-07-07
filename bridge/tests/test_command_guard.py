@@ -70,6 +70,14 @@ class CommandGuardTests(unittest.TestCase):
         self.assertEqual(len(out), 1)
         self.assertEqual(out[0].action, "set_speed")
 
+    def test_timeout_backoff_skips_during_construction(self):
+        state = _state()
+        state.construction = {"instances": 1, "area": 9}
+        cmds = [Command(action="set_speed", params={"value": 2})]
+        out, backoff = apply_timeout_backoff(cmds, 3, state)
+        self.assertTrue(backoff)
+        self.assertEqual(out, [])
+
     def test_is_timeout_result(self):
         self.assertTrue(is_timeout_result("Command timed out waiting for game thread"))
 

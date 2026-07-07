@@ -464,10 +464,13 @@ def filter_commands(
 def apply_timeout_backoff(
     commands: list[Command],
     consecutive_timeouts: int,
+    state: GameState | None = None,
 ) -> tuple[list[Command], bool]:
     """When game thread is saturated, only allow set_speed this tick."""
     if consecutive_timeouts < TIMEOUT_BACKOFF_THRESHOLD:
         return commands, False
+    if state and _construction_pending(state):
+        return [], True
     speed = [c for c in commands if c.action == "set_speed"]
     if speed:
         return speed[:1], True

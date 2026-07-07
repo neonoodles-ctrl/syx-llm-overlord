@@ -203,7 +203,7 @@ async def lifespan(app: FastAPI):
     )
 
     logger.info("Syx LLM Overlord bridge starting...")
-    logger.info(f"LLM: {config.llm.provider}/{config.llm.model}")
+    logger.info(f"LLM: {config.llm.provider} / {config.llm.model}")
     logger.info(f"Persona: {config.overlord.persona} · Game mode: {config.overlord.game_mode}")
     logger.info(f"Game API: {config.game.mod_url}")
     logger.info(f"Dashboard: http://localhost:{config.dashboard.port}")
@@ -354,8 +354,15 @@ async def decision_loop():
             if gameplay_note:
                 logger.info(f"Tick {tick}: {gameplay_note}")
             allowed, rejected = filter_commands(raw_commands, state, overlord_knowledge)
-            commands_to_run, backoff = apply_timeout_backoff(allowed, consecutive_timeouts)
-            if backoff:
+            commands_to_run, backoff = apply_timeout_backoff(
+                allowed, consecutive_timeouts, state
+            )
+            if backoff and not commands_to_run:
+                logger.info(
+                    f"Tick {tick}: timeout backoff + construction active — "
+                    "skipping commands this tick"
+                )
+            elif backoff:
                 logger.warning(
                     f"Tick {tick}: timeout backoff ({consecutive_timeouts} streak) — "
                     "set_speed only this tick"

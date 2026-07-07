@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 
 from .config import LLMConfig
 from .personalities import get_persona, get_game_mode, DEFAULT_PERSONA, DEFAULT_GAME_MODE
@@ -142,6 +143,20 @@ def _repair_json(raw: str) -> str:
     text = re.sub(r",\s*([}\]])", r"\1", text)
     text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", text)
     return text
+
+
+def _rate_limit_delay(exc: Exception) -> float:
+    """Seconds to wait after 429 before retry/fallback (cap 30s)."""
+    err = str(exc)
+    if "429" not in err:
+        return 0.0
+    match = re.search(r"retry in (\d+(?:\.\d+)?)\s*s", err, re.IGNORECASE)
+    if match:
+        return min(float(match.group(1)) + 0.5, 30.0)
+    match = re.search(r'"retryDelay":\s*"(\d+)s"', err)
+    if match:
+        return min(float(match.group(1)) + 0.5, 30.0)
+    return 8.0
 
 
 def _is_retriable_llm_error(exc: Exception) -> bool:
@@ -288,7 +303,12 @@ class LLMBrain:
                     logger.warning(f"Vision tick failed ({ve}); falling back to text-only decision")
             if self.config.provider == "anthropic":
                 return self._decide_anthropic(user_prompt)
-            return self._decide_openai_with_fallback(user_prompt)
+            decision = self._decide_openai_with_fallback(user_prompt)
+            if decision.mood == "confused" and not decision.commands:
+                logger.info("Retrying LLM decision after empty/invalid JSON")
+                time.sleep(1.0)
+                decision = self._decide_openai_with_fallback(user_prompt)
+            return decision
         except Exception as e:
             logger.error(f"LLM decision failed: {e}")
             return LLMDecision(
@@ -423,6 +443,10 @@ Reply to the player now."""
                 or not _is_retriable_llm_error(e)
             ):
                 raise
+            delay = _rate_limit_delay(e)
+            if delay:
+                logger.info(f"Rate limited — waiting {delay:.1f}s before fallback")
+                time.sleep(delay)
             logger.warning(
                 f"Primary model {self.config.model} failed ({e}); "
                 f"retrying with fallback {fb}"
@@ -481,18 +505,21 @@ Reply to the player now."""
                 temperature=self.config.temperature,
             )
         except Exception as e:
-            if not _is_retriable_llm_error(e):
-                raise
             fb = self.config.fallback_model
-            if not fb or fb == model:
+            if fb and fb != model and _is_retriable_llm_error(e):
+                delay = _rate_limit_delay(e)
+                if delay:
+                    logger.info(f"Vision rate limited — waiting {delay:.1f}s before fallback")
+                    time.sleep(delay)
+                logger.warning(f"Vision model {model} failed ({e}); retry {fb}")
+                response = self._client.chat.completions.create(
+                    model=fb,
+                    messages=messages,
+                    max_tokens=self.config.max_tokens,
+                    temperature=self.config.temperature,
+                )
+            else:
                 raise
-            logger.warning(f"Vision model {model} failed ({e}); retry {fb}")
-            response = self._client.chat.completions.create(
-                model=fb,
-                messages=messages,
-                max_tokens=self.config.max_tokens,
-                temperature=self.config.temperature,
-            )
         content = _extract_openai_content(response)
         return self._parse_decision(content)
 

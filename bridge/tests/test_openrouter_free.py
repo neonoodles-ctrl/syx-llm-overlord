@@ -28,7 +28,8 @@ def test_is_openrouter_free_model_zero_pricing():
 def test_ensure_llm_config_openrouter_without_key_falls_back_to_ollama(monkeypatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     cfg = LLMConfig(provider="openrouter", model="openrouter/owl-alpha", api_key="")
-    out = ensure_llm_config(cfg)
+    with patch("bridge.config.openrouter_api_key", return_value=""):
+        out = ensure_llm_config(cfg)
     assert out.provider == "ollama"
     assert out.model == "qwen2.5:14b"
 

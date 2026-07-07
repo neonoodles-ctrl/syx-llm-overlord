@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from dotenv import load_dotenv
 
 from .personalities import (
     DEFAULT_PERSONA,
@@ -20,6 +21,20 @@ from .personalities import (
 )
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
+_ENV_LOADED = False
+
+
+def _load_env_files() -> None:
+    """Load repo .env then ~/.hermes/.env (first wins — do not override set vars)."""
+    global _ENV_LOADED
+    if _ENV_LOADED:
+        return
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    load_dotenv(repo_root / ".env", override=False)
+    load_dotenv(Path.home() / ".hermes" / ".env", override=False)
+    _ENV_LOADED = True
+
+
 DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://10.0.10.151:11434/v1")
 DEFAULT_OPENROUTER_URL = "https://openrouter.ai/api/v1"
 DEFAULT_OPENROUTER_FREE_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
@@ -184,6 +199,7 @@ class Config:
 
 def load_config(path: str | Path = "config.yaml") -> Config:
     """Load configuration from YAML file with env var substitution."""
+    _load_env_files()
     config_path = Path(path)
     if path == "config.yaml" and CONFIG_PATH.exists():
         config_path = CONFIG_PATH
@@ -262,6 +278,7 @@ def load_config(path: str | Path = "config.yaml") -> Config:
 
 
 def openrouter_api_key() -> str:
+    _load_env_files()
     return os.environ.get("OPENROUTER_API_KEY", "")
 
 
