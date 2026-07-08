@@ -1,21 +1,76 @@
 """Configuration loader for the bridge service."""
 from __future__ import annotations
 
+import logging
 import os
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from dataclasses import dataclass, field
 from typing import Any
 
 import yaml
+from dotenv import load_dotenv
 
-from .personalities import DEFAULT_PERSONALITY, normalize_personality_id
+from .personalities import (
+    DEFAULT_PERSONA,
+    DEFAULT_GAME_MODE,
+    DEFAULT_PERSONALITY,
+    normalize_persona_id,
+    normalize_game_mode_id,
+    normalize_personality_id,
+    resolve_overlord_settings,
+)
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.yaml"
+_ENV_LOADED = False
+
+
+def _load_env_files() -> None:
+    """Load repo .env then ~/.hermes/.env (first wins — do not override set vars)."""
+    global _ENV_LOADED
+    if _ENV_LOADED:
+        return
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    load_dotenv(repo_root / ".env", override=False)
+    load_dotenv(Path.home() / ".hermes" / ".env", override=False)
+    _ENV_LOADED = True
+
+
 DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://10.0.10.151:11434/v1")
 DEFAULT_OPENROUTER_URL = "https://openrouter.ai/api/v1"
+DEFAULT_OPENROUTER_FREE_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 DEFAULT_OPENROUTER_FALLBACK = os.environ.get(
-    "SYX_LLM_FALLBACK_MODEL", "google/gemini-2.5-flash"
+    "SYX_LLM_FALLBACK_MODEL", "google/gemma-4-26b-a4b-it:free"
 )
+
+# Free via OpenRouter preview / $0 pricing but no :free suffix (may be absent from /models API)
+OPENROUTER_FREE_ALLOWLIST = frozenset({
+    "openrouter/owl-alpha",
+    "openrouter/free",
+})
+
+
+def openrouter_price_is_zero(price: str | float | None) -> bool:
+    """True when OpenRouter pricing field is explicitly zero (free tier)."""
+    if price is None:
+        return False
+    try:
+        return float(price) == 0.0
+    except (TypeError, ValueError):
+        return False
+
+
+def is_openrouter_free_model(
+    model_id: str,
+    prompt_price: str | float | None = None,
+    completion_price: str | float | None = None,
+) -> bool:
+    """OpenRouter free models use :free suffix, zero pricing, or explicit allowlist."""
+    mid = (model_id or "").strip().lower()
+    if mid in OPENROUTER_FREE_ALLOWLIST:
+        return True
+    if mid.endswith(":free"):
+        return True
+    return openrouter_price_is_zero(prompt_price) and openrouter_price_is_zero(completion_price)
 
 
 def normalize_model_id(provider: str, model: str) -> str:
@@ -44,7 +99,7 @@ class LLMConfig:
         "ollama":      ("http://localhost:11434/v1", "llama3"),
         "together":    ("https://api.together.xyz/v1", "meta-llama/Llama-3-70b-chat-hf"),
         "groq":        ("https://api.groq.com/openai/v1", "llama3-70b-8192"),
-        "openrouter":  ("https://openrouter.ai/api/v1", "meta-llama/llama-3-70b-instruct"),
+        "openrouter":  ("https://openrouter.ai/api/v1", DEFAULT_OPENROUTER_FREE_MODEL),
         "deepseek":    ("https://api.deepseek.com/v1", "deepseek-chat"),
         "fireworks":   ("https://api.fireworks.ai/inference/v1", "accounts/fireworks/models/llama-v3-70b-instruct"),
         "api":         (None, "gpt-4o"),  # generic -- user provides base_url + api_key
@@ -69,6 +124,31 @@ class LLMConfig:
         return url, key
 
 
+logger = logging.getLogger("syx-overlord.config")
+
+DEFAULT_OLLAMA_FALLBACK_MODEL = os.environ.get("SYX_OLLAMA_MODEL", "qwen2.5:14b")
+
+
+def ensure_llm_config(config: LLMConfig) -> LLMConfig:
+    """Keep bridge/dashboard up when cloud keys are missing — fall back to Ollama."""
+    _, key = config.resolve()
+    if config.provider == "openrouter" and not (key or "").strip():
+        logger.warning(
+            "OPENROUTER_API_KEY not set — falling back to Ollama (%s). "
+            "Set OPENROUTER_API_KEY in .env or switch provider in bridge/config.yaml.",
+            DEFAULT_OLLAMA_FALLBACK_MODEL,
+        )
+        return replace(
+            config,
+            provider="ollama",
+            model=DEFAULT_OLLAMA_FALLBACK_MODEL,
+            base_url=DEFAULT_OLLAMA_URL,
+            api_key="",
+            fallback_model=None,
+        )
+    return config
+
+
 @dataclass
 class GameConfig:
     mod_url: str = "http://localhost:47823"
@@ -84,7 +164,19 @@ class DashboardConfig:
 
 @dataclass
 class OverlordConfig:
-    personality: str = DEFAULT_PERSONALITY
+    persona: str = DEFAULT_PERSONA
+    game_mode: str = DEFAULT_GAME_MODE
+
+    @property
+    def personality(self) -> str:
+        """Legacy alias — persona id only."""
+        return self.persona
+
+
+@dataclass
+class MapConfig:
+    """Dashboard shows full settlement grid; LLM gets mapRows only when llm_enabled."""
+    llm_enabled: bool = False
 
 
 @dataclass
@@ -102,10 +194,12 @@ class Config:
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
     overlord: OverlordConfig = field(default_factory=OverlordConfig)
     vision: VisionConfig = field(default_factory=VisionConfig)
+    map: MapConfig = field(default_factory=MapConfig)
 
 
 def load_config(path: str | Path = "config.yaml") -> Config:
     """Load configuration from YAML file with env var substitution."""
+    _load_env_files()
     config_path = Path(path)
     if path == "config.yaml" and CONFIG_PATH.exists():
         config_path = CONFIG_PATH
@@ -119,6 +213,7 @@ def load_config(path: str | Path = "config.yaml") -> Config:
     dash_data = data.get("dashboard", {})
     overlord_data = data.get("overlord", {})
     vision_data = data.get("vision", {})
+    map_data = data.get("map", {})
     provider = llm_data.get("provider", "openai")
     model = normalize_model_id(provider, llm_data.get("model", "gpt-4o"))
     if provider == "openrouter":
@@ -140,8 +235,9 @@ def load_config(path: str | Path = "config.yaml") -> Config:
     elif fallback:
         vision_model = fallback
 
-    return Config(
-        llm=LLMConfig(
+    persona_id, game_mode_id = resolve_overlord_settings(overlord_data)
+    llm = ensure_llm_config(
+        LLMConfig(
             provider=provider,
             model=model,
             api_key=api_key,
@@ -149,7 +245,10 @@ def load_config(path: str | Path = "config.yaml") -> Config:
             max_tokens=llm_data.get("max_tokens", 2048),
             temperature=llm_data.get("temperature", 0.7),
             fallback_model=fallback,
-        ),
+        )
+    )
+    return Config(
+        llm=llm,
         game=GameConfig(
             mod_url=os.environ.get(
                 "SYX_MOD_URL",
@@ -163,9 +262,8 @@ def load_config(path: str | Path = "config.yaml") -> Config:
             ws_enabled=dash_data.get("ws_enabled", True),
         ),
         overlord=OverlordConfig(
-            personality=normalize_personality_id(
-                overlord_data.get("personality", DEFAULT_PERSONALITY)
-            ),
+            persona=normalize_persona_id(persona_id),
+            game_mode=normalize_game_mode_id(game_mode_id),
         ),
         vision=VisionConfig(
             enabled=bool(vision_data.get("enabled", False)),
@@ -173,10 +271,14 @@ def load_config(path: str | Path = "config.yaml") -> Config:
             max_width=int(vision_data.get("max_width", 1024)),
             model=vision_model,
         ),
+        map=MapConfig(
+            llm_enabled=bool(map_data.get("llm_enabled", False)),
+        ),
     )
 
 
 def openrouter_api_key() -> str:
+    _load_env_files()
     return os.environ.get("OPENROUTER_API_KEY", "")
 
 
@@ -246,10 +348,27 @@ def save_llm_settings(
 
 
 def save_personality_settings(*, personality: str, path: Path | None = None) -> None:
+    """Save persona (voice) — not game mode."""
+    save_persona_settings(persona=personality, path=path)
+
+
+def save_persona_settings(*, persona: str, path: Path | None = None) -> None:
     config_path = path or CONFIG_PATH
     data = load_config_file(config_path) if config_path.exists() else {}
     overlord = data.setdefault("overlord", {})
-    overlord["personality"] = normalize_personality_id(personality)
+    pid = normalize_persona_id(persona)
+    overlord["persona"] = pid
+    overlord["personality"] = pid  # legacy readers
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(config_path, "w") as f:
+        yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)
+
+
+def save_game_mode_settings(*, game_mode: str, path: Path | None = None) -> None:
+    config_path = path or CONFIG_PATH
+    data = load_config_file(config_path) if config_path.exists() else {}
+    overlord = data.setdefault("overlord", {})
+    overlord["game_mode"] = normalize_game_mode_id(game_mode)
     config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config_path, "w") as f:
         yaml.safe_dump(data, f, default_flow_style=False, sort_keys=False)

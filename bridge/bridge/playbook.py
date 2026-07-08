@@ -2,19 +2,22 @@
 from __future__ import annotations
 
 from .paths import playbook_path, wiki_dir
+from .map_constants import MAX_THRONE_DISTANCE
 
 VAULT_PLAYBOOK = playbook_path()
 
-_DEFAULT_PLAYBOOK = """
+_DEFAULT_PLAYBOOK = f"""
 SONGS OF SYX — STARTER PLAYBOOK (follow this until population > 20)
 
 ## Core facts
 - You control the settlement via JSON commands only. You cannot click the UI.
-- Throne coordinates are in game state — ALWAYS anchor builds within ~20 tiles of throne (x,y).
+- Throne coordinates are in game state — ALWAYS anchor builds within ~{MAX_THRONE_DISTANCE} tiles of throne (x,y).
 - NEVER build at (0,0) unless throne is at (0,0). Wrong coords cause repeated failures.
 - Only `build`, `clear_placement`, and `set_speed` work. set_policy, recruit, set_tax, set_ration, demolish are NOT implemented.
 - After placing buildings, always set_speed to 2 (normal) so construction proceeds.
-- Hard limit: builds within 20 tiles of throne (bridge guard enforces this).
+- **Wait for construction to finish** before placing the next build. Check `construction.instances` / `construction.area` in state — if > 0, set_speed only.
+- Hard limit: builds within {MAX_THRONE_DISTANCE} tiles of throne (bridge guard enforces this).
+- mapRows shows a {MAX_THRONE_DISTANCE}-tile radius around throne — spread builds across open `.` tiles, not clustered on the throne.
 
 ## TmpArea recovery
 - TmpArea/_HOME error: clear_placement once, then farm only (farms relocate to open tiles).
@@ -24,16 +27,26 @@ SONGS OF SYX — STARTER PLAYBOOK (follow this until population > 20)
 
 ## Day 0 priorities (population = 0)
 1. Read throne position from state. All x/y in build commands must be near throne.
-2. Build home — indoor room, attracts settlers. Try throne.x+2, throne.y or spiral offsets.
-3. Build farm or pasture — outdoor food (farm = area, default 4x4).
-4. Build well — outdoor single tile, only ONE well until population grows.
-5. Stockpile is tricky early — build home/farm first; retry elsewhere if crates fail.
-6. Do NOT spam the same failed build twice — use clear_placement then farm after TmpArea errors.
+2. Build **home** — indoor room, attracts settlers.
+3. Build **farm_grain** (food) — outdoor area on `.` tiles. Never cotton/industry farms early.
+4. Build **well** — outdoor single tile; mod spirals outward if TmpArea blocks.
+5. Stockpile and woodcutter are blocked by the bridge until pop ≥ 15.
+6. After 3 well TmpArea failures, bridge pauses wells — build farm_grain instead.
+
+## Pop 10–14 (growth phase)
+- Focus: home, farm, well, set_speed 2. **Max 1 build per tick — wait until construction completes.**
+- Do NOT build stockpile (blocked until pop 15 — needs crates).
+- Do NOT build woodcutter unless mapRows shows ^ forest at your target coords within {MAX_THRONE_DISTANCE} of throne.
+- If homes fail with TmpArea, clear_placement then farm at a new `.` tile.
+
+## Pop 15+ (industry phase)
+- Stockpile on indoor `.` when no overlapping rooms.
+- Woodcutter only on ^ tiles visible in mapRows (not on + room tiles).
 
 ## Learning (not static rules)
 - SESSION MEMORY = failures and orders from THIS game.
 - PERSISTENT KNOWLEDGE = blacklisted coords and patterns learned across ALL games (auto-updated). Read both before every build.
-- Never retry a blacklisted coordinate. If unsure, pick a new spot 10+ tiles from throne.
+- Never retry a blacklisted coordinate. If unsure, pick a new spot 15+ tiles from throne.
 
 ## Room types (target names)
 - Indoor area: stockpile, home
@@ -41,12 +54,12 @@ SONGS OF SYX — STARTER PLAYBOOK (follow this until population > 20)
 - Outdoor single: well, fishery, hunter
 
 ## Build command format
-{"action":"build","target":"home","x":386,"y":128,"params":{"width":4,"height":4}}
+{{"action":"build","target":"home","x":386,"y":128,"params":{{"width":4,"height":4}}}}
 
 ## Strategy
 - One focused goal per tick. Max 1 build + set_speed.
 - If last 3 ticks failed, switch to farm or clear_placement.
-- Prefer mapRows open tiles within 20 tiles of throne.
+- Prefer mapRows open `.` tiles spread across the visible map — avoid stacking everything adjacent to T.
 """
 
 
@@ -78,9 +91,9 @@ def _read_wiki(relative: str) -> str:
     return ""
 
 
-def load_mode_context(personality_id: str) -> str:
-    """Extra wiki-backed prompt block for game modes."""
-    pid = (personality_id or "").strip().lower()
+def load_mode_context(game_mode_id: str) -> str:
+    """Extra wiki-backed prompt block for game modes (not personas)."""
+    pid = (game_mode_id or "").strip().lower()
     if pid == "teacher":
         body = _read_wiki("modes/teacher.md")
         return f"\n\n--- TEACHER MODE GUIDE ---\n{body}\n" if body else ""

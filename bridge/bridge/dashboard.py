@@ -179,11 +179,15 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   .map-scroll-wrap {
     flex: 1;
     min-width: 0;
+    min-height: 420px;
     overflow: auto;
     background: #0a0c0f;
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .map-grid {
@@ -268,6 +272,16 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     font-size: 11px;
     color: var(--text-dim);
     padding: 4px 0;
+  }
+
+  .map-notice {
+    font-size: 11px;
+    color: var(--gold-dim);
+    padding: 6px 10px;
+    background: rgba(201, 162, 39, 0.08);
+    border: 1px solid rgba(201, 162, 39, 0.25);
+    border-radius: 6px;
+    line-height: 1.45;
   }
 
   .map-empty {
@@ -713,7 +727,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
   .chat-section {
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
     min-height: 0;
     overflow: hidden;
     background: var(--bg-panel);
@@ -727,56 +741,42 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     gap: 8px;
   }
 
-  .play-model-bar {
+  .settings-section {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .settings-section:last-child {
+    border-bottom: none;
+  }
+
+  .settings-section-title {
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    color: var(--gold);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 10px;
+  }
+
+  .settings-bar {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 8px;
-    padding: 8px 16px;
-    border-bottom: 1px solid var(--border);
-    background: rgba(26, 26, 40, 0.6);
   }
 
-  .play-model-bar .provider-tabs {
+  .settings-bar .provider-tabs {
     margin: 0;
+    flex-wrap: wrap;
   }
 
-  .play-model-bar .provider-tab {
+  .settings-bar .provider-tab {
     padding: 4px 10px;
     font-size: 10px;
   }
 
-  .play-model-select {
-    flex: 1;
-    min-width: 160px;
-    max-width: 320px;
-    background: var(--bg-dark);
-    border: 1px solid var(--border);
-    color: var(--text-bright);
-    padding: 5px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-family: 'Inter', sans-serif;
-  }
-
-  .play-model-hint {
-    font-size: 10px;
-    color: var(--text-dim);
-    width: 100%;
-    margin-top: -2px;
-  }
-
-  .play-monitor-bar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 16px 8px;
-    border-bottom: 1px solid var(--border);
-    background: rgba(20, 20, 32, 0.5);
-  }
-
-  .play-monitor-bar .monitor-bar-label {
+  .settings-bar-label {
     font-size: 10px;
     color: var(--text-dim);
     text-transform: uppercase;
@@ -784,59 +784,22 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     min-width: 52px;
   }
 
-  .play-monitor-bar .provider-tabs {
-    margin: 0;
-    flex-wrap: wrap;
+  .settings-hint {
+    font-size: 10px;
+    color: var(--text-dim);
+    width: 100%;
+    margin-top: 4px;
   }
 
-  .play-monitor-bar .monitor-tab.disconnected {
+  .settings-bar .monitor-tab.disconnected {
     opacity: 0.45;
     text-decoration: line-through;
   }
 
-  .play-monitor-hint {
-    font-size: 10px;
-    color: var(--text-dim);
-    width: 100%;
-    margin-top: -2px;
-  }
-
-  .play-mode-bar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 10px;
-    margin-bottom: 8px;
-    background: rgba(0,0,0,0.25);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-  }
-
-  .play-mode-bar .mode-bar-label {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--text-dim);
-    font-family: 'Cinzel', serif;
-  }
-
-  .play-mode-bar .mode-tab {
-    font-size: 10px;
-    padding: 4px 10px;
-  }
-
-  .play-mode-bar .mode-tab.active {
+  .settings-bar .mode-tab.active {
     border-color: var(--gold);
     color: var(--gold);
     background: rgba(201, 162, 39, 0.12);
-  }
-
-  .play-mode-hint {
-    font-size: 10px;
-    color: var(--text-dim);
-    flex: 1;
-    min-width: 140px;
   }
 
   .screenshot-bar {
@@ -1242,41 +1205,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           <div class="panel-header-row">
             <span>Talk to the Overlord</span>
             <span class="header-badges">
+              <span class="meta-badge" id="badgeGameMode" title="Active game mode">—</span>
               <span class="meta-badge" id="badgePersona" title="Active persona">—</span>
               <span class="meta-badge meta-model" id="badgeModel" title="Active model">—</span>
             </span>
-          </div>
-          <div class="play-model-bar">
-            <div class="provider-tabs">
-              <button type="button" class="provider-tab" id="playTabOllama" onclick="switchProvider('ollama')">Ollama</button>
-              <button type="button" class="provider-tab" id="playTabOpenRouter" onclick="switchProvider('openrouter')">OpenRouter</button>
-            </div>
-            <select class="play-model-select" id="playModelSelect" title="Active LLM model">
-              <option>Loading…</option>
-            </select>
-            <button class="btn btn-icon" onclick="applyModel('play')">Apply</button>
-            <button class="btn btn-icon" onclick="refreshModels()">↻</button>
-            <div class="play-model-hint" id="playModelHint">Switch model without leaving the Overlord tab</div>
-          </div>
-          <div class="play-monitor-bar">
-            <span class="monitor-bar-label">Monitor</span>
-            <div class="provider-tabs" id="monitorTabs">
-              <button type="button" class="provider-tab monitor-tab" data-monitor="0" onclick="selectMonitorTab(0)">0</button>
-              <button type="button" class="provider-tab monitor-tab" data-monitor="1" onclick="selectMonitorTab(1)">1</button>
-              <button type="button" class="provider-tab monitor-tab" data-monitor="2" onclick="selectMonitorTab(2)">2</button>
-            </div>
-            <button class="btn btn-icon" onclick="applyMonitor(false)">Apply</button>
-            <button class="btn btn-icon" onclick="applyMonitor(true)" title="Save monitor + restart game">Apply &amp; restart</button>
-            <div class="play-monitor-hint" id="monitorHint">Loading monitors…</div>
-          </div>
-          <div class="play-mode-bar">
-            <span class="mode-bar-label">Game mode</span>
-            <div class="provider-tabs" id="gameModeTabs">
-              <button type="button" class="provider-tab mode-tab" data-mode="teacher" onclick="selectGameMode('teacher')">Teacher</button>
-              <button type="button" class="provider-tab mode-tab" data-mode="civil_flow" onclick="selectGameMode('civil_flow')">Civil Flow</button>
-            </div>
-            <button class="btn btn-icon" onclick="applyGameMode()">Apply</button>
-            <div class="play-mode-hint" id="gameModeHint">Teacher explains · Civil Flow = wiki expert</div>
           </div>
           <div class="chat-panel" id="chatPanel">
             <div class="chat-empty" id="chatEmpty">No messages yet — ask the Overlord anything, or give a build order.</div>
@@ -1337,12 +1269,17 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         </select>
       </label>
       <label>Zoom
-        <input type="range" id="mapCellSize" min="8" max="28" value="14" oninput="renderMapGrid()">
+        <input type="range" id="mapCellSize" min="6" max="36" value="14" oninput="onMapZoomInput()">
       </label>
+      <button class="btn btn-icon" type="button" onclick="fitMapView()">Fit view</button>
       <button class="btn btn-icon" onclick="refreshMapView()">↻ Refresh</button>
       <button class="btn btn-icon" onclick="queueAllMapPins()">Tell Overlord</button>
       <button class="btn btn-icon" onclick="clearAllMapPins()">Clear pins</button>
       <div class="map-legend" id="mapLegendBar"></div>
+    </div>
+    <div class="map-notice" id="mapNotice">
+      Full settlement map for you to place pins. The Overlord does <strong>not</strong> receive this ASCII grid
+      (partial crops confused placement) — use <strong>Tell Overlord</strong> on pins, or chat orders with coordinates.
     </div>
     <div class="map-status" id="mapStatus">Loading map…</div>
     <div class="map-layout">
@@ -1363,8 +1300,34 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   <div id="viewSettings" class="view view-settings">
     <div class="settings-config-panel">
       <div class="panel-header">Configuration</div>
-      <div class="config-scroll" id="configPanel">
-        <div style="color: var(--text-dim); text-align: center;">Loading...</div>
+      <div class="config-scroll">
+        <div class="settings-section" id="gameModeSection">
+          <div class="settings-section-title">Game mode</div>
+          <div class="settings-bar">
+            <div class="provider-tabs" id="gameModeTabs">
+              <button type="button" class="provider-tab mode-tab" data-mode="teacher" onclick="selectGameMode('teacher')">Teacher</button>
+              <button type="button" class="provider-tab mode-tab" data-mode="civil_flow" onclick="selectGameMode('civil_flow')">Civil Flow</button>
+            </div>
+            <button class="btn btn-icon" onclick="applyGameMode()">Apply</button>
+          </div>
+          <div class="settings-hint" id="gameModeHint">Civil Flow = win-any-game expert · Teacher = learn while playing</div>
+        </div>
+        <div class="settings-section" id="monitorSection">
+          <div class="settings-section-title">Display monitor</div>
+          <div class="settings-bar">
+            <div class="provider-tabs" id="monitorTabs">
+              <button type="button" class="provider-tab monitor-tab" data-monitor="0" onclick="selectMonitorTab(0)">0</button>
+              <button type="button" class="provider-tab monitor-tab" data-monitor="1" onclick="selectMonitorTab(1)">1</button>
+              <button type="button" class="provider-tab monitor-tab" data-monitor="2" onclick="selectMonitorTab(2)">2</button>
+            </div>
+            <button class="btn btn-icon" onclick="applyMonitor(false)">Apply</button>
+            <button class="btn btn-icon" onclick="applyMonitor(true)" title="Save monitor + restart game">Apply &amp; restart</button>
+          </div>
+          <div class="settings-hint" id="monitorHint">Loading monitors…</div>
+        </div>
+        <div id="configPanel">
+          <div style="color: var(--text-dim); text-align: center; padding: 16px;">Loading…</div>
+        </div>
       </div>
     </div>
     <div class="settings-chronicle-panel">
@@ -1378,25 +1341,105 @@ DASHBOARD_HTML = """<!DOCTYPE html>
   </div>
 </div>
 
-<div class="overlay" id="overlay">
-  <h2>Waiting for Connection</h2>
-  <p class="thinking">Attempting to reach the Syx LLM Overlord bridge...</p>
+<div class="overlay hidden" id="overlay">
+  <h2 id="overlayTitle">Waiting for Connection</h2>
+  <p class="thinking" id="overlayHint">Checking bridge …</p>
+  <button type="button" id="overlayDismiss" class="btn" style="margin-top:16px;display:none">Open dashboard anyway</button>
 </div>
 
 <script>
-const WS_URL = `ws://${location.host}/ws`;
+const WS_URL = `ws://${location.hostname}:${location.port || (location.protocol === 'https:' ? '443' : '80')}/ws`;
 let ws = null;
 let reconnectTimer = null;
 let tickCount = 0;
+let restConnected = false;
+let healthPollTimer = null;
+let overlayDismissed = false;
+
+async function checkRestHealth() {
+  try {
+    const resp = await fetch(`${location.origin}/api/health`, { cache: 'no-store' });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return data.status === 'ok' ? data : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function setBridgeUi(bridgeUp, gameUp) {
+  document.getElementById('llmStatus').className = `status-dot ${bridgeUp ? 'online' : 'offline'}`;
+  document.getElementById('gameStatus').className = `status-dot ${gameUp ? 'online' : 'offline'}`;
+}
+
+function updateOverlay(health) {
+  const overlay = document.getElementById('overlay');
+  const hint = document.getElementById('overlayHint');
+  const title = document.getElementById('overlayTitle');
+  const dismiss = document.getElementById('overlayDismiss');
+  if (!overlay) return;
+
+  if (overlayDismissed || health) {
+    overlay.classList.add('hidden');
+    if (health) {
+      setBridgeUi(true, !!health.game_connected);
+    }
+    return;
+  }
+
+  overlay.classList.remove('hidden');
+  setBridgeUi(false, false);
+  if (title) title.textContent = 'Waiting for Connection';
+  if (hint) {
+    hint.textContent = `Checking bridge at ${location.origin} … (retrying every 2s)`;
+  }
+  if (dismiss) dismiss.style.display = 'inline-block';
+}
+
+async function pollRestHealth() {
+  const health = await checkRestHealth();
+  restConnected = !!health;
+  if (health) {
+    updateOverlay(health);
+    try {
+      const stateResp = await fetch(`${location.origin}/api/state`);
+      if (stateResp.ok) {
+        const state = await stateResp.json();
+        if (!state.error) updateState(state);
+      }
+    } catch (e) { /* WS or later poll will refresh */ }
+    if (healthPollTimer) {
+      clearInterval(healthPollTimer);
+      healthPollTimer = null;
+    }
+  } else {
+    updateOverlay(null);
+  }
+  return health;
+}
+
+async function bootstrapDashboard() {
+  document.getElementById('overlayDismiss')?.addEventListener('click', () => {
+    overlayDismissed = true;
+    updateOverlay({ status: 'ok', game_connected: false });
+    setBridgeUi(true, false);
+  });
+
+  await pollRestHealth();
+  if (!restConnected) {
+    healthPollTimer = setInterval(pollRestHealth, 2000);
+  }
+  connect();
+}
 
 function connect() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   ws = new WebSocket(WS_URL);
 
   ws.onopen = () => {
-    document.getElementById('overlay').classList.add('hidden');
-    document.getElementById('llmStatus').className = 'status-dot online';
-    document.getElementById('gameStatus').className = 'status-dot online';
-    console.log('Connected to bridge');
+    overlayDismissed = true;
+    updateOverlay({ status: 'ok', game_connected: true });
+    console.log('Connected to bridge (WebSocket)');
   };
 
   ws.onmessage = (event) => {
@@ -1404,10 +1447,15 @@ function connect() {
     handleMessage(data);
   };
 
-  ws.onclose = () => {
-    document.getElementById('overlay').classList.remove('hidden');
-    document.getElementById('llmStatus').className = 'status-dot offline';
-    document.getElementById('gameStatus').className = 'status-dot offline';
+  ws.onclose = async () => {
+    // Embedded browsers often block WebSocket — stay up if REST works
+    const health = await checkRestHealth();
+    restConnected = !!health;
+    if (health || overlayDismissed) {
+      updateOverlay(health || { status: 'ok', game_connected: false });
+    } else {
+      updateOverlay(null);
+    }
     reconnectTimer = setTimeout(connect, 3000);
   };
 
@@ -1438,9 +1486,17 @@ function handleMessage(data) {
   } else if (data.type === 'chat') {
     appendChat(data.user, data.reply, data.id, true, data.screenshot);
     renderOrderQueue(data.orders);
-  } else if (data.type === 'personality') {
-    setPersonalityUi(data.personality, data.personality_name, data.personality_label);
-    renderGameModeTabs(data.personality);
+  } else if (data.type === 'persona' || data.type === 'personality') {
+    setPersonalityUi(data.persona || data.personality, data.personality_name, data.personality_label);
+  } else if (data.type === 'game_mode') {
+    cfgCache = {
+      ...cfgCache,
+      game_mode: data.game_mode,
+      game_mode_name: data.game_mode_name,
+      game_mode_description: data.game_mode_description,
+    };
+    renderGameModeTabs(data.game_mode);
+    updateMainBadges(cfgCache);
   } else if (data.type === 'monitor') {
     selectedMonitorIndex = data.active_index ?? selectedMonitorIndex;
     renderMonitorTabs(monitorCache, selectedMonitorIndex);
@@ -1600,9 +1656,11 @@ function switchView(view) {
 }
 
 function updateMainBadges(cfg) {
+  const mode = document.getElementById('badgeGameMode');
   const persona = document.getElementById('badgePersona');
   const model = document.getElementById('badgeModel');
-  if (persona) persona.textContent = cfg?.personality_name || cfg?.personality || '—';
+  if (mode) mode.textContent = cfg?.game_mode_name || cfg?.game_mode || '—';
+  if (persona) persona.textContent = cfg?.personality_name || cfg?.persona || cfg?.personality || '—';
   if (model) {
     const prov = cfg?.llm_provider || 'ollama';
     model.textContent = formatActiveModel(prov, cfg?.llm_model || '—');
@@ -1618,22 +1676,25 @@ let currentProvider = 'ollama';
 let cfgCache = {};
 let selectedMonitorIndex = 0;
 let monitorCache = [];
-let selectedGameMode = 'teacher';
+let selectedGameMode = 'civil_flow';
 
 function renderGameModeTabs(activeId) {
   const tabs = document.getElementById('gameModeTabs');
   if (!tabs) return;
-  const modes = (cfgCache.personalities || []).filter(p => p.kind === 'game_mode');
-  const active = activeId || cfgCache.personality;
-  const isMode = modes.some(m => m.id === active);
+  const modes = cfgCache.game_modes || [];
+  const active = activeId || cfgCache.game_mode || selectedGameMode;
+  if (modes.length) {
+    tabs.innerHTML = modes.map(m =>
+      `<button type="button" class="provider-tab mode-tab" data-mode="${escapeHtml(m.id)}" onclick="selectGameMode('${escapeHtml(m.id)}')">${escapeHtml(m.name)}</button>`
+    ).join('');
+  }
   tabs.querySelectorAll('.mode-tab').forEach(btn => {
     const id = btn.dataset.mode;
-    const on = isMode && id === active;
-    btn.classList.toggle('active', on);
+    btn.classList.toggle('active', id === active);
     const meta = modes.find(m => m.id === id);
     if (meta?.description) btn.title = meta.description;
   });
-  if (isMode) selectedGameMode = active;
+  selectedGameMode = active;
 }
 
 function selectGameMode(modeId) {
@@ -1645,17 +1706,22 @@ async function applyGameMode() {
   const hint = document.getElementById('gameModeHint');
   try {
     if (hint) hint.textContent = 'Applying game mode…';
-    const resp = await fetch('/api/config/personality', {
+    const resp = await fetch('/api/config/game-mode', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ personality: selectedGameMode }),
+      body: JSON.stringify({ game_mode: selectedGameMode }),
     });
     const result = await resp.json();
     if (result.success) {
-      cfgCache = { ...cfgCache, personality: result.personality, personality_name: result.personality_name, personality_label: result.personality_label };
-      setPersonalityUi(result.personality, result.personality_name, result.personality_label);
-      renderGameModeTabs(result.personality);
-      const desc = (cfgCache.personalities || []).find(p => p.id === result.personality)?.description || result.personality_name;
+      cfgCache = {
+        ...cfgCache,
+        game_mode: result.game_mode,
+        game_mode_name: result.game_mode_name,
+        game_mode_description: result.game_mode_description,
+      };
+      renderGameModeTabs(result.game_mode);
+      updateMainBadges(cfgCache);
+      const desc = result.game_mode_description || result.game_mode_name;
       if (hint) hint.innerHTML = '<span class="apply-ok">✓ ' + escapeHtml(desc) + '</span>';
     } else {
       if (hint) hint.textContent = 'Failed: ' + (result.message || 'unknown');
@@ -1693,9 +1759,8 @@ async function loadConfig() {
     if (cfg.personality_label) overlordLabel = cfg.personality_label;
     updateMainBadges(cfg);
     renderConfigPanel(cfg);
-    renderGameModeTabs(cfg.personality);
-    document.getElementById('playTabOllama')?.classList.toggle('active', currentProvider === 'ollama');
-    document.getElementById('playTabOpenRouter')?.classList.toggle('active', currentProvider === 'openrouter');
+    selectedGameMode = cfg.game_mode || 'civil_flow';
+    renderGameModeTabs(cfg.game_mode);
     await loadModelsForProvider(currentProvider, cfg.llm_model);
   } catch (e) {
     console.error('Failed to load config:', e);
@@ -1718,29 +1783,29 @@ function setPersonalityUi(id, name, label) {
 function renderConfigPanel(cfg) {
   const panel = document.getElementById('configPanel');
   const prov = cfg.llm_provider || 'ollama';
-  const personalities = cfg.personalities || [];
-  const modes = personalities.filter(p => p.kind === 'game_mode');
-  const personas = personalities.filter(p => p.kind !== 'game_mode');
-  const opt = (p) => `<option value="${p.id}"${p.id === cfg.personality ? ' selected' : ''}>${escapeHtml(p.name)}</option>`;
-  const persOptions = [
-    modes.length ? `<optgroup label="Game modes">${modes.map(opt).join('')}</optgroup>` : '',
-    personas.length ? `<optgroup label="Personas">${personas.map(opt).join('')}</optgroup>` : '',
-  ].join('') || '<option value="gregg">Gregg</option>';
+  const personas = cfg.personalities || [];
+  const activePersona = cfg.persona || cfg.personality;
+  const opt = (p) => `<option value="${p.id}"${p.id === activePersona ? ' selected' : ''}>${escapeHtml(p.name)}</option>`;
+  const persOptions = personas.length
+    ? personas.map(opt).join('')
+    : '<option value="gregg">Gregg</option>';
   panel.innerHTML = `
+    <div class="settings-section" style="padding-top:0;">
+      <div class="settings-section-title">LLM model</div>
     <div class="config-row">
       <span class="config-label">Active</span>
       <span class="config-value" id="activeModel">${formatActiveModel(prov, cfg.llm_model)}</span>
     </div>
     <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 6px;">
-      <span class="config-label">Game mode / Persona</span>
+      <span class="config-label">Persona</span>
       <select class="config-select" id="personalitySelect">${persOptions}</select>
       <div class="config-actions">
         <button class="btn" onclick="applyPersonality()">Apply</button>
       </div>
-      <div class="config-hint" id="personalityHint">Active: <span id="activePersonality">${escapeHtml(cfg.personality_name || 'Gregg')}</span></div>
+      <div class="config-hint" id="personalityHint">Voice only — independent of game mode. Active: <span id="activePersonality">${escapeHtml(cfg.personality_name || 'Gregg')}</span></div>
     </div>
     <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 6px;">
-      <span class="config-label">LLM Provider</span>
+      <span class="config-label">Provider</span>
       <div class="provider-tabs">
         <button type="button" class="provider-tab ${prov === 'ollama' ? 'active' : ''}" id="tabOllama" onclick="switchProvider('ollama')">Ollama (Unraid)</button>
         <button type="button" class="provider-tab ${prov === 'openrouter' ? 'active' : ''}" id="tabOpenRouter" onclick="switchProvider('openrouter')">OpenRouter</button>
@@ -1753,7 +1818,7 @@ function renderConfigPanel(cfg) {
         <select class="config-select" id="ollamaModelSelect"><option>Loading…</option></select>
         <div class="config-actions">
           <button class="btn btn-wake" id="wakeBtn" onclick="wakeOllama()"${prov === 'ollama' ? '' : ' disabled title="Apply Ollama provider first"'}>Wake / Load Model</button>
-          <button class="btn" onclick="applyModel('settings')">Apply</button>
+          <button class="btn" onclick="applyModel()">Apply</button>
           <button class="btn" onclick="refreshModels()">Refresh</button>
         </div>
         <div class="config-hint" id="ollamaHint">${prov === 'ollama' ? 'Cold Unraid Ollama? Click Wake first (may take ~2 min).' : 'OpenRouter active — Ollama on Unraid is not contacted until you Apply Ollama.'}</div>
@@ -1765,10 +1830,10 @@ function renderConfigPanel(cfg) {
         </div>
         <select class="config-select" id="openrouterModelSelect"><option>Loading…</option></select>
         <div class="config-actions">
-          <button class="btn" onclick="applyModel('settings')">Apply</button>
+          <button class="btn" onclick="applyModel()">Apply</button>
           <button class="btn" onclick="refreshModels()">Refresh</button>
         </div>
-        <div class="config-hint" id="openrouterHint">OpenRouter cloud models</div>
+        <div class="config-hint" id="openrouterHint">OpenRouter free models only (:free tier)</div>
       </div>
     </div>
     <div class="config-row">
@@ -1779,6 +1844,7 @@ function renderConfigPanel(cfg) {
       <span class="config-label">Poll Interval</span>
       <span class="config-value">${cfg.poll_interval || '--'}s</span>
     </div>
+    </div>
   `;
 }
 
@@ -1788,18 +1854,12 @@ function switchProvider(prov) {
   document.getElementById('tabOpenRouter')?.classList.toggle('active', prov === 'openrouter');
   document.getElementById('panelOllama')?.classList.toggle('active', prov === 'ollama');
   document.getElementById('panelOpenRouter')?.classList.toggle('active', prov === 'openrouter');
-  document.getElementById('playTabOllama')?.classList.toggle('active', prov === 'ollama');
-  document.getElementById('playTabOpenRouter')?.classList.toggle('active', prov === 'openrouter');
   const activeModel = cfgCache.llm_provider === prov ? cfgCache.llm_model : null;
   loadModelsForProvider(prov, activeModel);
 }
 
 function setSelectOptions(select, html) {
   if (select) select.innerHTML = html;
-}
-
-function syncPlayModelSelect(html) {
-  setSelectOptions(document.getElementById('playModelSelect'), html);
 }
 
 async function loadModelsForProvider(prov, selectedModel) {
@@ -1813,15 +1873,12 @@ async function loadModelsForProvider(prov, selectedModel) {
 async function loadOllamaModels(selectedModel) {
   const select = document.getElementById('ollamaModelSelect');
   const hint = document.getElementById('ollamaHint');
-  const playHint = document.getElementById('playModelHint');
   const wakeBtn = document.getElementById('wakeBtn');
 
   if (cfgCache.llm_provider !== 'ollama') {
     const msg = '<option value="">Apply Ollama provider to list models</option>';
     setSelectOptions(select, msg);
-    if (currentProvider === 'ollama') syncPlayModelSelect(msg);
     if (hint) hint.textContent = 'OpenRouter is active — Unraid Ollama stays idle until you Apply Ollama.';
-    if (playHint && currentProvider === 'ollama') playHint.textContent = 'Apply Ollama to activate Unraid models';
     if (wakeBtn) wakeBtn.disabled = true;
     return;
   }
@@ -1833,7 +1890,6 @@ async function loadOllamaModels(selectedModel) {
     if (data.skipped) {
       const msg = '<option value="">Apply Ollama provider first</option>';
       setSelectOptions(select, msg);
-      if (currentProvider === 'ollama') syncPlayModelSelect(msg);
       if (hint) hint.textContent = data.error || 'Ollama not active';
       if (wakeBtn) wakeBtn.disabled = true;
       return;
@@ -1841,7 +1897,6 @@ async function loadOllamaModels(selectedModel) {
     if (!data.success) {
       const msg = '<option value="">Ollama unreachable</option>';
       setSelectOptions(select, msg);
-      if (currentProvider === 'ollama') syncPlayModelSelect(msg);
       if (hint) hint.textContent = 'Error: ' + (data.error || 'cannot reach Ollama') + ' — try Wake after server is up';
       return;
     }
@@ -1850,14 +1905,11 @@ async function loadOllamaModels(selectedModel) {
       return `<option value="${m.name}"${m.name === selectedModel ? ' selected' : ''}>${label}</option>`;
     }).join('');
     setSelectOptions(select, html);
-    if (currentProvider === 'ollama') syncPlayModelSelect(html);
     const countMsg = `${data.models.length} models — Wake loads selected model into VRAM`;
     if (hint) hint.textContent = countMsg;
-    if (playHint && currentProvider === 'ollama') playHint.textContent = countMsg;
   } catch (e) {
     const msg = '<option value="">Failed to load</option>';
     setSelectOptions(select, msg);
-    if (currentProvider === 'ollama') syncPlayModelSelect(msg);
     if (hint) hint.textContent = e.message;
   }
 }
@@ -1865,21 +1917,36 @@ async function loadOllamaModels(selectedModel) {
 async function loadOpenRouterModels(selectedModel) {
   const select = document.getElementById('openrouterModelSelect');
   const hint = document.getElementById('openrouterHint');
-  const playHint = document.getElementById('playModelHint');
   const norm = (m) => (m || '').replace(/^openrouter\\/openrouter\\//, 'openrouter/');
   selectedModel = norm(selectedModel);
   try {
-    const resp = await fetch('/api/openrouter/models');
+    const resp = await fetch('/api/openrouter/models?free_only=true');
     const data = await resp.json();
     if (!data.success) {
       const msg = '<option value="">OpenRouter unavailable</option>';
       setSelectOptions(select, msg);
-      if (currentProvider === 'openrouter') syncPlayModelSelect(msg);
       if (hint) hint.textContent = data.error || 'cannot list models';
       return;
     }
-    const curated = ['openrouter/owl-alpha', 'openrouter/auto', 'google/gemini-2.0-flash-001', 'anthropic/claude-sonnet-4', 'google/gemini-2.5-pro-preview', 'meta-llama/llama-3.3-70b-instruct'];
-    const sorted = [...data.models].sort((a, b) => {
+    const isFreeModel = (m) => {
+      const name = (m.name || '').toLowerCase();
+      if (name.endsWith(':free') || name === 'openrouter/owl-alpha' || name === 'openrouter/free') return true;
+      if (m.prompt_price_label === 'free' && m.completion_price_label === 'free') return true;
+      const pin = parseFloat(m.prompt_price);
+      const cout = parseFloat(m.completion_price);
+      return pin === 0 && cout === 0 && !Number.isNaN(pin) && !Number.isNaN(cout);
+    };
+    const curated = [
+      'nvidia/nemotron-3-super-120b-a12b:free',
+      'google/gemma-4-26b-a4b-it:free',
+      'openrouter/free',
+      'qwen/qwen3-coder:free',
+      'meta-llama/llama-3.3-70b-instruct:free',
+      'cohere/north-mini-code:free',
+      'openai/gpt-oss-120b:free',
+      'liquid/lfm-2.5-1.2b-instruct:free',
+    ];
+    const sorted = [...data.models].filter(isFreeModel).sort((a, b) => {
       const ai = curated.indexOf(a.name);
       const bi = curated.indexOf(b.name);
       if (ai >= 0 && bi >= 0) return ai - bi;
@@ -1887,22 +1954,22 @@ async function loadOpenRouterModels(selectedModel) {
       if (bi >= 0) return 1;
       return a.name.localeCompare(b.name);
     });
-    const html = sorted.slice(0, 80).map(m => {
-      const label = m.prompt_price_label
-        || (m.prompt_price != null && String(m.prompt_price) !== '' ? formatOpenRouterPrice(m.prompt_price) : '');
-      const price = label ? ` (${label} in)` : '';
+    if (!sorted.length) {
+      setSelectOptions(select, '<option value="">No free models returned — check OpenRouter key</option>');
+      if (hint) hint.textContent = 'No :free models from OpenRouter (rate limits or API issue)';
+      return;
+    }
+    const html = sorted.map(m => {
       const sel = norm(m.name) === selectedModel ? ' selected' : '';
-      return `<option value="${m.name}"${sel}>${m.name}${price}</option>`;
+      const pin = m.pinned ? ' [pinned]' : '';
+      return `<option value="${m.name}"${sel}>${m.name} (free)${pin}</option>`;
     }).join('');
     setSelectOptions(select, html);
-    if (currentProvider === 'openrouter') syncPlayModelSelect(html);
-    const countMsg = `${data.models.length} models available`;
+    const countMsg = `${sorted.length} free model${sorted.length === 1 ? '' : 's'} — OpenRouter :free tier only`;
     if (hint) hint.textContent = countMsg;
-    if (playHint && currentProvider === 'openrouter') playHint.textContent = countMsg;
   } catch (e) {
     const msg = '<option value="">Failed to load</option>';
     setSelectOptions(select, msg);
-    if (currentProvider === 'openrouter') syncPlayModelSelect(msg);
     if (hint) hint.textContent = e.message;
   }
 }
@@ -1958,8 +2025,8 @@ async function applyPersonality() {
     });
     const result = await resp.json();
     if (result.success) {
-      cfgCache = { ...cfgCache, personality: result.personality, personality_name: result.personality_name, personality_label: result.personality_label };
-      setPersonalityUi(result.personality, result.personality_name, result.personality_label);
+      cfgCache = { ...cfgCache, persona: result.persona || result.personality, personality: result.personality, personality_name: result.personality_name, personality_label: result.personality_label };
+      setPersonalityUi(result.persona || result.personality, result.personality_name, result.personality_label);
       updateMainBadges(cfgCache);
       if (hint) hint.innerHTML = 'Active: <span id="activePersonality">' + escapeHtml(result.personality_name) + '</span> <span class="apply-ok">✓</span>';
     } else {
@@ -1972,14 +2039,13 @@ async function applyPersonality() {
   }
 }
 
-async function applyModel(source) {
-  const fromPlay = source === 'play';
-  const hint = fromPlay
-    ? document.getElementById('playModelHint')
-    : (currentProvider === 'ollama' ? document.getElementById('ollamaHint') : document.getElementById('openrouterHint'));
-  const select = fromPlay
-    ? document.getElementById('playModelSelect')
-    : (currentProvider === 'ollama' ? document.getElementById('ollamaModelSelect') : document.getElementById('openrouterModelSelect'));
+async function applyModel() {
+  const hint = currentProvider === 'ollama'
+    ? document.getElementById('ollamaHint')
+    : document.getElementById('openrouterHint');
+  const select = currentProvider === 'ollama'
+    ? document.getElementById('ollamaModelSelect')
+    : document.getElementById('openrouterModelSelect');
   const model = select?.value;
   if (!model || model.startsWith('Loading') || model.includes('unreachable') || model.includes('Failed') || model.includes('Apply')) {
     alert('Pick a model from the list first (use Refresh if the dropdown is empty).');
@@ -1991,7 +2057,7 @@ async function applyModel(source) {
     ? { provider: 'ollama', model, base_url: cfg.ollama_v1_url }
     : { provider: 'openrouter', model, base_url: cfg.openrouter_url || cfg.llm_base_url };
 
-  const applyBtns = document.querySelectorAll('.config-actions .btn:not(.btn-wake), .play-model-bar .btn');
+  const applyBtns = document.querySelectorAll('.config-actions .btn:not(.btn-wake)');
   applyBtns.forEach(b => { b.disabled = true; });
 
   try {
@@ -2014,8 +2080,6 @@ async function applyModel(source) {
       document.getElementById('tabOpenRouter')?.classList.toggle('active', result.llm_provider === 'openrouter');
       document.getElementById('panelOllama')?.classList.toggle('active', result.llm_provider === 'ollama');
       document.getElementById('panelOpenRouter')?.classList.toggle('active', result.llm_provider === 'openrouter');
-      document.getElementById('playTabOllama')?.classList.toggle('active', result.llm_provider === 'ollama');
-      document.getElementById('playTabOpenRouter')?.classList.toggle('active', result.llm_provider === 'openrouter');
       const active = document.getElementById('activeModel');
       if (active) active.textContent = formatActiveModel(result.llm_provider, result.llm_model);
       updateMainBadges(cfgCache);
@@ -2137,7 +2201,7 @@ async function loadMonitors() {
 
 async function applyMonitor(restart) {
   const hint = document.getElementById('monitorHint');
-  const btns = document.querySelectorAll('.play-monitor-bar .btn');
+  const btns = document.querySelectorAll('#monitorSection .btn');
   btns.forEach(b => { b.disabled = true; });
   try {
     if (hint) hint.textContent = restart ? 'Applying monitor + restarting game…' : 'Applying monitor…';
@@ -2337,8 +2401,6 @@ loadOrders();
 loadChat();
 loadMemory();
 loadPendingScreenshot();
-initMapLegend();
-connect();
 
 document.getElementById('screenshotUpload')?.addEventListener('change', (e) => {
   const file = e.target.files?.[0];
@@ -2369,7 +2431,37 @@ const MAP_PIN_TYPE_COLORS = {
   stockpile: '#8d6e63', woodcutter: '#795548', custom: '#e91e63',
 };
 
-let mapCache = { rows: [], centerX: 0, centerY: 0, radius: 0, legend: '', pins: [] };
+let mapCache = { rows: [], centerX: 0, centerY: 0, radius: 0, x1: 0, y1: 0, x2: 0, y2: 0, mapFull: false, legend: '', pins: [], llmMapEnabled: false };
+let mapAutoFit = true;
+
+function onMapZoomInput() {
+  mapAutoFit = false;
+  renderMapGrid();
+}
+
+function fitMapView() {
+  mapAutoFit = true;
+  renderMapGrid();
+}
+
+function computeMapCellSize() {
+  const slider = document.getElementById('mapCellSize');
+  if (!mapAutoFit && slider) {
+    return parseInt(slider.value || '14', 10);
+  }
+  const wrap = document.getElementById('mapScrollWrap');
+  const cols = mapCache.rows[0]?.length || 41;
+  const rows = mapCache.rows.length || 41;
+  if (!wrap || !cols || !rows) return 14;
+  const pad = 28;
+  const w = Math.max(200, wrap.clientWidth - pad);
+  const h = Math.max(200, wrap.clientHeight - pad);
+  const byW = Math.floor(w / cols);
+  const byH = Math.floor(h / rows);
+  const fit = Math.max(6, Math.min(36, Math.min(byW, byH)));
+  if (slider) slider.value = String(fit);
+  return fit;
+}
 
 function initMapLegend() {
   const bar = document.getElementById('mapLegendBar');
@@ -2395,11 +2487,12 @@ function pinAt(x, y) {
 
 async function refreshMapView() {
   const status = document.getElementById('mapStatus');
+  const notice = document.getElementById('mapNotice');
   try {
     const resp = await fetch('/api/map');
     const data = await resp.json();
-    if (data.message && !data.rows?.length) {
-      status.textContent = data.message;
+    if (!data.rows?.length) {
+      status.textContent = data.message || 'No map data';
       document.getElementById('mapEmpty').hidden = false;
       document.getElementById('mapGrid').hidden = true;
       mapCache.pins = data.pins || [];
@@ -2411,12 +2504,34 @@ async function refreshMapView() {
       centerX: data.centerX ?? 0,
       centerY: data.centerY ?? 0,
       radius: data.radius ?? 0,
+      x1: data.x1 ?? 0,
+      y1: data.y1 ?? 0,
+      x2: data.x2 ?? 0,
+      y2: data.y2 ?? 0,
+      mapFull: !!data.mapFull,
       legend: data.legend || '',
       pins: data.pins || [],
+      llmMapEnabled: !!data.llm_map_enabled,
     };
-    status.textContent = `Center (${mapCache.centerX}, ${mapCache.centerY}) · radius ${mapCache.radius} · ${mapCache.rows.length}×${mapCache.rows[0]?.length || 0} tiles`;
+    const cols = mapCache.rows[0]?.length || 0;
+    const rows = mapCache.rows.length;
+    if (mapCache.mapFull && mapCache.x2 >= mapCache.x1) {
+      status.textContent =
+        `Settlement ${cols}×${rows} (x ${mapCache.x1}–${mapCache.x2}, y ${mapCache.y1}–${mapCache.y2}) · throne (${mapCache.centerX}, ${mapCache.centerY})`;
+    } else if (mapCache.radius >= 32) {
+      status.textContent =
+        `Build preview ${cols}×${rows} · ${mapCache.radius} tiles from throne (${mapCache.centerX}, ${mapCache.centerY})`;
+    } else {
+      status.textContent = `Legacy crop ${rows}×${cols} — restart game for updated mod`;
+    }
+    if (notice) {
+      notice.innerHTML = mapCache.llmMapEnabled
+        ? 'Overlord <strong>receives</strong> mapRows (map.llm_enabled: true).'
+        : 'For <strong>you</strong> only — Overlord map grid is <strong>OFF</strong>. Pin build sites and click <strong>Tell Overlord</strong>.';
+    }
     document.getElementById('mapEmpty').hidden = true;
     document.getElementById('mapGrid').hidden = false;
+    mapAutoFit = true;
     renderMapGrid();
     renderMapPinList();
   } catch (e) {
@@ -2427,12 +2542,16 @@ async function refreshMapView() {
 function renderMapGrid() {
   const grid = document.getElementById('mapGrid');
   if (!grid || !mapCache.rows?.length) return;
-  const cellSize = parseInt(document.getElementById('mapCellSize')?.value || '14', 10);
+  const cellSize = computeMapCellSize();
   const cols = mapCache.rows[0].length;
   grid.style.gridTemplateColumns = `repeat(${cols}, ${cellSize}px)`;
   grid.innerHTML = '';
-  const r0 = mapCache.centerY - mapCache.radius;
-  const c0 = mapCache.centerX - mapCache.radius;
+  const c0 = mapCache.mapFull && mapCache.x2 >= mapCache.x1
+    ? mapCache.x1
+    : mapCache.centerX - mapCache.radius;
+  const r0 = mapCache.mapFull && mapCache.y2 >= mapCache.y1
+    ? mapCache.y1
+    : mapCache.centerY - mapCache.radius;
 
   mapCache.rows.forEach((row, ri) => {
     for (let ci = 0; ci < row.length; ci++) {
@@ -2545,6 +2664,14 @@ async function queueAllMapPins() {
     alert('Failed to queue pins: ' + e.message);
   }
 }
+
+initMapLegend();
+window.addEventListener('resize', () => {
+  if (document.getElementById('viewMap')?.classList.contains('active') && mapCache.rows?.length) {
+    renderMapGrid();
+  }
+});
+bootstrapDashboard();
 </script>
 </body>
 </html>

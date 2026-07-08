@@ -16,6 +16,7 @@ import view.tool.PlacableMulti;
 final class RoomBuilder {
 
     private static final int SEARCH_RADIUS = 40;
+    private static final int ITEM_SEARCH_RADIUS = 20;
     private static final int DEFAULT_AREA = 4;
 
     private RoomBuilder() {
@@ -46,9 +47,34 @@ final class RoomBuilder {
             return direct;
         }
 
-        // Item rooms (well, woodcutter): one attempt only — spiral search re-inits placer and can deadlock TmpArea.
+        // Single-tile rooms (well, etc.): limited spiral with cleanup between attempts.
         if (!blueprint.constructor().usesArea()) {
-            return direct;
+            COORDINATE center = THRONE.coo();
+            for (int radius = 1; radius <= ITEM_SEARCH_RADIUS; radius++) {
+                for (int dy = -radius; dy <= radius; dy++) {
+                    for (int dx = -radius; dx <= radius; dx++) {
+                        if (Math.abs(dx) != radius && Math.abs(dy) != radius) {
+                            continue;
+                        }
+                        int tx = center.x() + dx;
+                        int ty = center.y() + dy;
+                        if (tx == x && ty == y) {
+                            continue;
+                        }
+                        CommandResult attempt = tryBuild(blueprint, tx, ty, itemGroup, width, height);
+                        if (attempt.success) {
+                            return new CommandResult(
+                                true,
+                                attempt.message + " (relocated from " + x + "," + y + ")"
+                            );
+                        }
+                    }
+                }
+            }
+            return new CommandResult(
+                false,
+                direct.message + " (also searched " + ITEM_SEARCH_RADIUS + " tiles around throne)"
+            );
         }
 
         COORDINATE center = THRONE.coo();

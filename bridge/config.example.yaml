@@ -11,11 +11,12 @@ llm:
   max_tokens: 2048
   temperature: 0.7
 
-# CLOUD — OpenRouter (set OPENROUTER_API_KEY in .env)
+# CLOUD — OpenRouter free tier (set OPENROUTER_API_KEY in .env)
+# Dashboard lists :free models only. Pick from Settings → OpenRouter.
 # llm:
 #   provider: openrouter
 #   model: openrouter/owl-alpha
-#   fallback_model: google/gemini-2.5-flash
+#   fallback_model: meta-llama/llama-3.3-70b-instruct:free
 #   base_url: https://openrouter.ai/api/v1
 #   max_tokens: 2048
 #   temperature: 0.7
@@ -45,16 +46,22 @@ dashboard:
   port: 3847
   ws_enabled: true
 
-# Personality: peace_god | tyrant | gregg
+# Persona (voice): gregg | peace_god | tyrant
+# Game mode (strategy): civil_flow | teacher
 overlord:
-  personality: gregg
+  game_mode: civil_flow
+  persona: gregg
 
 # Vision — game window screenshots for map-aware decisions (requires xdotool + ImageMagick)
 # vision:
 #   enabled: true
 #   every_n_ticks: 5
 #   max_width: 1024
-#   model: google/gemini-2.5-flash
+#   model: google/gemini-2.0-flash-exp:free
+
+# Map — dashboard shows full settlement; LLM gets mapRows only if llm_enabled: true
+# map:
+#   llm_enabled: false
 
 # Optional path overrides (defaults: repo-root/wiki, repo-root/logs)
 # paths:

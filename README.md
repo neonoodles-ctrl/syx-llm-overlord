@@ -45,21 +45,26 @@ llm:
 
 3. Dashboard → **Ollama** tab → **Wake / Load Model** if cold → **Apply**
 
-### Option B — Cloud API (OpenRouter, OpenAI, …)
+### Option B — Cloud API (OpenRouter free tier)
+
+Uses OpenRouter’s **`:free` models** only (no paid picks in the dashboard). You still need an OpenRouter API key; usage stays on the free tier.
 
 1. Copy `.env.example` → `.env`
-2. Set `OPENROUTER_API_KEY=sk-or-...` (or `OPENAI_API_KEY`, etc.)
+2. Set `OPENROUTER_API_KEY=sk-or-...`
 3. Edit `bridge/config.yaml`:
 
 ```yaml
 llm:
   provider: openrouter
   model: openrouter/owl-alpha
+  fallback_model: meta-llama/llama-3.3-70b-instruct:free
 ```
 
-4. Dashboard → **OpenRouter** tab → pick model → **Apply**
+4. Dashboard → **Settings** → **OpenRouter** → pick a free model → **Apply**
 
-Other providers: see comments in `bridge/config.example.yaml` (Together, Groq, DeepSeek, generic OpenAI-compatible `api`).
+Free models can hit rate limits; the bridge retries with `fallback_model` if set. For zero cloud usage, use **Option A (Ollama)**.
+
+Other paid providers: see comments in `bridge/config.example.yaml` (OpenAI, Together, Groq, DeepSeek, generic `api`).
 
 ---
 
@@ -174,7 +179,8 @@ run.sh           Start bridge
 | `Game API unreachable` | Enable LLM Overlord mod; check `:47823` |
 | Builds at (0,0) | Throne coords missing — load save, check state panel |
 | TmpArea / PlacerItem crash | Restart game via dashboard; avoid spam-building same tile |
-| OpenRouter errors | Set `OPENROUTER_API_KEY` in `.env`, restart bridge |
+| OpenRouter errors | Set `OPENROUTER_API_KEY` in `.env`, restart bridge; use `:free` models only |
+| OpenRouter 429 rate limit | Switch free model in Settings or set `fallback_model` to another `:free` slug |
 | Ollama timeout | Use **Wake / Load Model** in dashboard; check `base_url` |
 
 ---

@@ -22,7 +22,7 @@ from pathlib import Path
 BRIDGE = os.environ.get("SYX_BRIDGE_URL", "http://127.0.0.1:3847")
 MOD = os.environ.get("SYX_MOD_URL", "http://127.0.0.1:47823")
 OPENROUTER = os.environ.get("OPENROUTER_API_KEY", "")
-VISION_MODEL = os.environ.get("SYX_VISION_MODEL", "google/gemini-2.5-flash")
+VISION_MODEL = os.environ.get("SYX_VISION_MODEL", "google/gemini-2.0-flash-exp:free")
 
 SETTLEMENT_CHECKLIST = (
     "Throne/settlement core visible; last build placement plausible near throne; "

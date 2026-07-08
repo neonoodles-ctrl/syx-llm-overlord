@@ -4,11 +4,13 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 
 from .config import LLMConfig
-from .personalities import get_personality, DEFAULT_PERSONALITY
+from .personalities import get_persona, get_game_mode, DEFAULT_PERSONA, DEFAULT_GAME_MODE
 from .playbook import load_playbook, load_mode_context
-from .models import GameState, LLMDecision, Command
+from .models import GameState, LLMDecision, Command, state_for_llm
+from .map_constants import MAX_THRONE_DISTANCE
 
 logger = logging.getLogger(__name__)
 
@@ -71,10 +73,17 @@ PERSISTENT KNOWLEDGE (all prior games — obey blacklists):
 What is your next command? Respond with JSON only."""
 
 _CHAT_RULES = """
-Answer in plain text (2-5 sentences). Stay fully in character per your personality.
+Answer in plain text (2-5 sentences).
+
+PERSONA vs GAME MODE (both apply — do not merge them):
+- PERSONA = voice and character (how you speak, what you call the player).
+- GAME MODE = tactical playbook (optimal next moves, phase priorities, room/failure rules).
+Stay fully in persona voice while giving game-mode strategic guidance. Never drop persona
+for a neutral assistant tone. Cite room rules and failure patterns when relevant to the advice.
+
 - If they ask a question, answer using the game state and session memory provided.
 - If they ask about your wiki or playbook: YES — you have a local rules wiki (playbook) injected into every decision tick, plus session memory (this game) and persistent knowledge (learned across games). You do NOT browse the web or external wikis; cite what you know from playbook + memory + knowledge + current state.
-- If they give an order, acknowledge what you will prioritize on the next decision tick.
+- If they give an order, acknowledge what you will prioritize on the next decision tick (in persona voice, per game mode priorities).
 - If they ask what you are doing or why something failed, explain using recent history and memory.
 - If they request an action that is not implemented (demolish, tax, policy, recruit, ration), say so and suggest build or set_speed instead.
 
@@ -136,6 +145,20 @@ def _repair_json(raw: str) -> str:
     return text
 
 
+def _rate_limit_delay(exc: Exception) -> float:
+    """Seconds to wait after 429 before retry/fallback (cap 30s)."""
+    err = str(exc)
+    if "429" not in err:
+        return 0.0
+    match = re.search(r"retry in (\d+(?:\.\d+)?)\s*s", err, re.IGNORECASE)
+    if match:
+        return min(float(match.group(1)) + 0.5, 30.0)
+    match = re.search(r'"retryDelay":\s*"(\d+)s"', err)
+    if match:
+        return min(float(match.group(1)) + 0.5, 30.0)
+    return 8.0
+
+
 def _is_retriable_llm_error(exc: Exception) -> bool:
     err = str(exc).lower()
     for code in ("400", "401", "429", "502", "503", "504"):
@@ -147,25 +170,31 @@ def _is_retriable_llm_error(exc: Exception) -> bool:
     return False
 
 
-def _system_prompt(personality_id: str) -> str:
-    p = get_personality(personality_id)
-    mode_block = load_mode_context(personality_id)
+def _system_prompt(persona_id: str, game_mode_id: str) -> str:
+    persona = get_persona(persona_id)
+    mode = get_game_mode(game_mode_id)
+    mode_block = load_mode_context(game_mode_id)
     return f"""You are an AI overlord controlling a fantasy city-state in Songs of Syx.
 Your goal is to grow your civilization, keep your people alive, and defend against threats.
 
-{p.tick_voice}
+{persona.tick_voice}
+
+{mode.tick_voice}
 
 {_TICK_RULES}
 
 """ + load_playbook() + mode_block
 
 
-def _chat_system_prompt(personality_id: str) -> str:
-    p = get_personality(personality_id)
-    mode_block = load_mode_context(personality_id)
+def _chat_system_prompt(persona_id: str, game_mode_id: str) -> str:
+    persona = get_persona(persona_id)
+    mode = get_game_mode(game_mode_id)
+    mode_block = load_mode_context(game_mode_id)
     return f"""You are the ruler of a Songs of Syx settlement. The player is speaking to you directly.
 
-{p.chat_voice}
+{persona.chat_voice}
+
+{mode.chat_voice}
 
 {_CHAT_RULES}""" + (f"\n\n{mode_block}" if mode_block else "")
 
@@ -173,14 +202,32 @@ def _chat_system_prompt(personality_id: str) -> str:
 class LLMBrain:
     """Connects to an LLM and gets strategic decisions."""
 
-    def __init__(self, config: LLMConfig, personality: str = DEFAULT_PERSONALITY):
+    def __init__(
+        self,
+        config: LLMConfig,
+        persona: str = DEFAULT_PERSONA,
+        game_mode: str = DEFAULT_GAME_MODE,
+        map_llm_enabled: bool = False,
+    ):
         self.config = config
-        self.personality = get_personality(personality).id
+        self.persona = get_persona(persona).id
+        self.game_mode = get_game_mode(game_mode).id
+        self.map_llm_enabled = map_llm_enabled
         self._client = None
         self._init_client()
 
+    def set_map_llm_enabled(self, enabled: bool) -> None:
+        self.map_llm_enabled = bool(enabled)
+
+    def set_persona(self, persona_id: str) -> None:
+        self.persona = get_persona(persona_id).id
+
+    def set_game_mode(self, game_mode_id: str) -> None:
+        self.game_mode = get_game_mode(game_mode_id).id
+
     def set_personality(self, personality_id: str) -> None:
-        self.personality = get_personality(personality_id).id
+        """Legacy — sets persona only."""
+        self.set_persona(personality_id)
 
     def _init_client(self):
         """Initialize the LLM client based on provider."""
@@ -222,15 +269,23 @@ class LLMBrain:
                 "Cross-check throne coords from JSON with what you see."
             )
         else:
-            vision_note = (
-                "MAP: ASCII tile grid is in state summary (if exported by mod). "
-                "You cannot see pixels unless a screenshot is attached. "
-                "Use mapRows + throne coords + memory for placement."
-            )
+            if not self.map_llm_enabled:
+                vision_note = (
+                    "MAP: Tile grid is OFF in this prompt (partial maps confuse placement). "
+                    "Use throne coords, roomCounts, construction, memory, player pins, and "
+                    f"spread builds up to {MAX_THRONE_DISTANCE} tiles from throne."
+                )
+            else:
+                vision_note = (
+                    "MAP: ASCII tile grid is in state summary (if exported by mod). "
+                    "You cannot see pixels unless a screenshot is attached. "
+                    "Use mapRows + throne coords + memory for placement."
+                )
 
+        include_map = self.map_llm_enabled
         user_prompt = USER_PROMPT_TEMPLATE.format(
-            state_summary=state.summarize(),
-            state_json=json.dumps(state.model_dump(), indent=2, default=str),
+            state_summary=state.summarize(include_map=include_map),
+            state_json=json.dumps(state_for_llm(state, include_map=include_map), indent=2, default=str),
             recent_history="\n".join(recent_history[-3:]) if recent_history else "None yet",
             user_orders=orders_block,
             map_pins=map_pins or "",
@@ -248,7 +303,12 @@ class LLMBrain:
                     logger.warning(f"Vision tick failed ({ve}); falling back to text-only decision")
             if self.config.provider == "anthropic":
                 return self._decide_anthropic(user_prompt)
-            return self._decide_openai_with_fallback(user_prompt)
+            decision = self._decide_openai_with_fallback(user_prompt)
+            if decision.mood == "confused" and not decision.commands:
+                logger.info("Retrying LLM decision after empty/invalid JSON")
+                time.sleep(1.0)
+                decision = self._decide_openai_with_fallback(user_prompt)
+            return decision
         except Exception as e:
             logger.error(f"LLM decision failed: {e}")
             return LLMDecision(
@@ -269,9 +329,10 @@ class LLMBrain:
     ) -> str:
         """Plain-text reply when the player talks to the overlord."""
         if state:
+            include_map = self.map_llm_enabled
             state_block = (
-                f"Current summary:\n{state.summarize()}\n\n"
-                f"Full state JSON:\n{json.dumps(state.model_dump(), indent=2, default=str)}"
+                f"Current summary:\n{state.summarize(include_map=include_map)}\n\n"
+                f"Full state JSON:\n{json.dumps(state_for_llm(state, include_map=include_map), indent=2, default=str)}"
             )
         else:
             state_block = "Game state unavailable (mod API not connected). Answer from general knowledge and memory."
@@ -302,7 +363,7 @@ Local wiki / playbook (rules you follow each tick — summarize if asked):
 
 Reply to the player now."""
 
-        chat_system = _chat_system_prompt(self.personality)
+        chat_system = _chat_system_prompt(self.persona, self.game_mode)
         try:
             if screenshot_b64:
                 model = vision_model or self.config.fallback_model or self.config.model
@@ -382,6 +443,10 @@ Reply to the player now."""
                 or not _is_retriable_llm_error(e)
             ):
                 raise
+            delay = _rate_limit_delay(e)
+            if delay:
+                logger.info(f"Rate limited — waiting {delay:.1f}s before fallback")
+                time.sleep(delay)
             logger.warning(
                 f"Primary model {self.config.model} failed ({e}); "
                 f"retrying with fallback {fb}"
@@ -391,7 +456,7 @@ Reply to the player now."""
     def _decide_openai(self, user_prompt: str, *, model: str | None = None) -> LLMDecision:
         model = model or self.config.model
         messages = [
-            {"role": "system", "content": _system_prompt(self.personality)},
+            {"role": "system", "content": _system_prompt(self.persona, self.game_mode)},
             {"role": "user", "content": user_prompt},
         ]
         kwargs: dict = {
@@ -429,7 +494,7 @@ Reply to the player now."""
             },
         ]
         messages = [
-            {"role": "system", "content": _system_prompt(self.personality)},
+            {"role": "system", "content": _system_prompt(self.persona, self.game_mode)},
             {"role": "user", "content": content_parts},
         ]
         try:
@@ -440,18 +505,21 @@ Reply to the player now."""
                 temperature=self.config.temperature,
             )
         except Exception as e:
-            if not _is_retriable_llm_error(e):
-                raise
             fb = self.config.fallback_model
-            if not fb or fb == model:
+            if fb and fb != model and _is_retriable_llm_error(e):
+                delay = _rate_limit_delay(e)
+                if delay:
+                    logger.info(f"Vision rate limited — waiting {delay:.1f}s before fallback")
+                    time.sleep(delay)
+                logger.warning(f"Vision model {model} failed ({e}); retry {fb}")
+                response = self._client.chat.completions.create(
+                    model=fb,
+                    messages=messages,
+                    max_tokens=self.config.max_tokens,
+                    temperature=self.config.temperature,
+                )
+            else:
                 raise
-            logger.warning(f"Vision model {model} failed ({e}); retry {fb}")
-            response = self._client.chat.completions.create(
-                model=fb,
-                messages=messages,
-                max_tokens=self.config.max_tokens,
-                temperature=self.config.temperature,
-            )
         content = _extract_openai_content(response)
         return self._parse_decision(content)
 
@@ -459,7 +527,7 @@ Reply to the player now."""
         response = self._client.messages.create(
             model=self.config.model,
             max_tokens=self.config.max_tokens,
-            system=_system_prompt(self.personality),
+            system=_system_prompt(self.persona, self.game_mode),
             messages=[{
                 "role": "user",
                 "content": [
@@ -482,7 +550,7 @@ Reply to the player now."""
         response = self._client.messages.create(
             model=self.config.model,
             max_tokens=self.config.max_tokens,
-            system=_system_prompt(self.personality),
+            system=_system_prompt(self.persona, self.game_mode),
             messages=[{"role": "user", "content": user_prompt}],
         )
         content = _extract_anthropic_content(response)

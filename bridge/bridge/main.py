@@ -11,16 +11,19 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, Response
 from pydantic import BaseModel
 
 from .config import (
     load_config,
     save_llm_settings,
     save_personality_settings,
+    save_game_mode_settings,
     ollama_native_url,
     ollama_request_timeout,
     openrouter_api_key,
+    is_openrouter_free_model,
+    OPENROUTER_FREE_ALLOWLIST,
     DEFAULT_OLLAMA_URL,
     DEFAULT_OPENROUTER_URL,
     ollama_v1_url_from_config,
@@ -34,11 +37,14 @@ from .knowledge import OverlordKnowledge
 from .command_guard import (
     filter_commands,
     apply_timeout_backoff,
+    apply_gameplay_adjustments,
     is_timeout_result,
     is_tmparea_result,
     record_build_outcome,
+    record_clear_placement_outcome,
     should_clear_placement,
     reset_session_guard,
+    tick_guard_cooldowns,
     guard_status,
 )
 from .game_session import GameSessionTracker
@@ -57,7 +63,15 @@ from .monitors import (
 from .wiki_sync import sync_memory_to_wiki
 from .paths import restart_script_path, repo_root
 from .map_pins import MapPinStore
-from .personalities import personality_choices, normalize_personality_id, get_personality
+from .personalities import (
+    persona_choices,
+    game_mode_choices,
+    normalize_persona_id,
+    normalize_game_mode_id,
+    normalize_personality_id,
+    get_persona,
+    get_game_mode,
+)
 from .models import GameState, TickRecord, LLMDecision, CommandResult, Command
 from . import dashboard as dash_module
 
@@ -126,7 +140,11 @@ class KnowledgeNoteRequest(BaseModel):
 
 
 class PersonalityUpdateRequest(BaseModel):
-    personality: str
+    personality: str  # persona id (legacy field name)
+
+
+class GameModeUpdateRequest(BaseModel):
+    game_mode: str
 
 
 class MonitorUpdateRequest(BaseModel):
@@ -150,10 +168,16 @@ def reload_llm_brain() -> None:
         config = load_config()
     if llm_brain:
         llm_brain.close()
-    llm_brain = LLMBrain(config.llm, personality=config.overlord.personality)
+    llm_brain = LLMBrain(
+        config.llm,
+        persona=config.overlord.persona,
+        game_mode=config.overlord.game_mode,
+        map_llm_enabled=config.map.llm_enabled,
+    )
     logger.info(
         f"LLM reloaded: {config.llm.provider}/{config.llm.model} "
-        f"personality={config.overlord.personality}"
+        f"persona={config.overlord.persona} game_mode={config.overlord.game_mode} "
+        f"map_llm={config.map.llm_enabled}"
     )
 
 
@@ -163,7 +187,12 @@ async def lifespan(app: FastAPI):
 
     config = load_config()
     game_client = GameClient(config.game.mod_url)
-    llm_brain = LLMBrain(config.llm, personality=config.overlord.personality)
+    llm_brain = LLMBrain(
+        config.llm,
+        persona=config.overlord.persona,
+        game_mode=config.overlord.game_mode,
+        map_llm_enabled=config.map.llm_enabled,
+    )
 
     logging.basicConfig(
         level=getattr(logging, "INFO"),
@@ -174,8 +203,8 @@ async def lifespan(app: FastAPI):
     )
 
     logger.info("Syx LLM Overlord bridge starting...")
-    logger.info(f"LLM: {config.llm.provider}/{config.llm.model}")
-    logger.info(f"Personality: {config.overlord.personality}")
+    logger.info(f"LLM: {config.llm.provider} / {config.llm.model}")
+    logger.info(f"Persona: {config.overlord.persona} · Game mode: {config.overlord.game_mode}")
     logger.info(f"Game API: {config.game.mod_url}")
     logger.info(f"Dashboard: http://localhost:{config.dashboard.port}")
 
@@ -230,6 +259,7 @@ async def decision_loop():
 
     while running:
         try:
+            tick_guard_cooldowns(current_state)
             # 1. Fetch game state
             try:
                 state = await asyncio.get_event_loop().run_in_executor(
@@ -314,14 +344,25 @@ async def decision_loop():
                         f"Tick {tick}: clear_placement "
                         f"{'OK' if clear_res.success else 'FAIL'} - {clear_res.message}"
                     )
+                    record_clear_placement_outcome(clear_res.success)
                 except Exception as e:
                     logger.warning(f"Tick {tick}: clear_placement error: {e}")
 
             # 4. Pre-flight filter + timeout backoff
             raw_commands = decision.commands[: config.game.command_rate_limit]
+            raw_commands, gameplay_note = apply_gameplay_adjustments(raw_commands, state)
+            if gameplay_note:
+                logger.info(f"Tick {tick}: {gameplay_note}")
             allowed, rejected = filter_commands(raw_commands, state, overlord_knowledge)
-            commands_to_run, backoff = apply_timeout_backoff(allowed, consecutive_timeouts)
-            if backoff:
+            commands_to_run, backoff = apply_timeout_backoff(
+                allowed, consecutive_timeouts, state
+            )
+            if backoff and not commands_to_run:
+                logger.info(
+                    f"Tick {tick}: timeout backoff + construction active — "
+                    "skipping commands this tick"
+                )
+            elif backoff:
                 logger.warning(
                     f"Tick {tick}: timeout backoff ({consecutive_timeouts} streak) — "
                     "set_speed only this tick"
@@ -359,6 +400,7 @@ async def decision_loop():
                                     f"  post-fail clear_placement "
                                     f"{'OK' if clear_res.success else 'FAIL'} - {clear_res.message}"
                                 )
+                                record_clear_placement_outcome(clear_res.success)
                             except Exception as e:
                                 logger.warning(f"  post-fail clear_placement error: {e}")
                 except Exception as e:
@@ -447,6 +489,11 @@ async def decision_loop():
 @app.get("/", response_class=HTMLResponse)
 async def root():
     return dash_module.get_html()
+
+
+@app.head("/")
+async def root_head():
+    return Response(status_code=200)
 
 
 @app.get("/api/health")
@@ -604,36 +651,47 @@ async def add_knowledge_note(body: KnowledgeNoteRequest):
 
 @app.get("/api/map")
 async def get_map():
-    """ASCII tile grid from latest game state (requires updated mod + game restart)."""
+    """ASCII tile grid from latest game state (full settlement when mod updated)."""
     pins = map_pin_store.snapshot()
-    if current_state and current_state.mapRows:
-        return {
-            "centerX": current_state.mapCenterX,
-            "centerY": current_state.mapCenterY,
-            "radius": current_state.mapRadius,
-            "legend": current_state.mapLegend,
-            "rows": current_state.mapRows,
+    meta = {
+        "llm_map_enabled": config.map.llm_enabled if config else False,
+    }
+
+    def pack(state: GameState) -> dict:
+        out = {
+            "centerX": state.mapCenterX,
+            "centerY": state.mapCenterY,
+            "radius": state.mapRadius,
+            "mapFull": state.mapFull,
+            "x1": state.mapX1,
+            "y1": state.mapY1,
+            "x2": state.mapX2,
+            "y2": state.mapY2,
+            "legend": state.mapLegend,
+            "rows": state.mapRows,
             "pins": pins,
+            **meta,
         }
+        if state.mapFull and state.mapX2 >= state.mapX1:
+            out["width"] = state.mapX2 - state.mapX1 + 1
+            out["height"] = state.mapY2 - state.mapY1 + 1
+        return out
+
+    if current_state and current_state.mapRows:
+        return pack(current_state)
     try:
         state = await asyncio.get_event_loop().run_in_executor(
             None, game_client.get_state
         )
         if state.mapRows:
-            return {
-                "centerX": state.mapCenterX,
-                "centerY": state.mapCenterY,
-                "radius": state.mapRadius,
-                "legend": state.mapLegend,
-                "rows": state.mapRows,
-                "pins": pins,
-            }
+            return pack(state)
     except Exception as e:
-        return {"success": False, "message": str(e), "pins": pins}
+        return {"success": False, "message": str(e), "pins": pins, **meta}
     return {
         "success": False,
         "message": "No map grid in state — restart the game to load the updated mod JAR",
         "pins": pins,
+        **meta,
     }
 
 
@@ -814,10 +872,15 @@ async def get_config():
             "llm_base_url": config.llm.base_url or (
                 DEFAULT_OPENROUTER_URL if config.llm.provider == "openrouter" else (ollama_v1 or DEFAULT_OLLAMA_URL)
             ),
-            "personality": config.overlord.personality,
-            "personality_name": get_personality(config.overlord.personality).name,
-            "personality_label": get_personality(config.overlord.personality).chat_label,
-            "personalities": personality_choices(),
+            "personality": config.overlord.persona,
+            "persona": config.overlord.persona,
+            "personality_name": get_persona(config.overlord.persona).name,
+            "personality_label": get_persona(config.overlord.persona).chat_label,
+            "game_mode": config.overlord.game_mode,
+            "game_mode_name": get_game_mode(config.overlord.game_mode).name,
+            "game_mode_description": get_game_mode(config.overlord.game_mode).description,
+            "personalities": persona_choices(),
+            "game_modes": game_mode_choices(),
             "ollama_active": config.llm.provider == "ollama",
             "ollama_url": ollama_host_for_display(config),
             "ollama_v1_url": ollama_v1 or DEFAULT_OLLAMA_URL.rstrip("/"),
@@ -924,8 +987,8 @@ async def list_ollama_models():
 
 
 @app.get("/api/openrouter/models")
-async def list_openrouter_models():
-    """Fetch model list from OpenRouter."""
+async def list_openrouter_models(free_only: bool = True):
+    """Fetch model list from OpenRouter (free tier only by default)."""
     import httpx
 
     key = openrouter_api_key()
@@ -934,6 +997,7 @@ async def list_openrouter_models():
             "success": False,
             "error": "OPENROUTER_API_KEY not set in environment",
             "models": [],
+            "free_only": free_only,
         }
     url = f"{DEFAULT_OPENROUTER_URL}/models"
     try:
@@ -949,6 +1013,8 @@ async def list_openrouter_models():
             pricing = entry.get("pricing") or {}
             prompt_raw = pricing.get("prompt")
             completion_raw = pricing.get("completion")
+            if free_only and not is_openrouter_free_model(mid, prompt_raw, completion_raw):
+                continue
             models.append({
                 "name": mid,
                 "context": entry.get("context_length"),
@@ -957,12 +1023,25 @@ async def list_openrouter_models():
                 "prompt_price_label": format_openrouter_price_per_million(prompt_raw),
                 "completion_price_label": format_openrouter_price_per_million(completion_raw),
             })
-        # Prefer free/cheap and common chat models near the top
         models.sort(key=lambda m: m["name"].lower())
-        return {"success": True, "url": url, "models": models}
+
+        # Pinned free models — usable even when absent from OpenRouter catalog (preview/retired).
+        pinned_ids = [m for m in OPENROUTER_FREE_ALLOWLIST if m not in {x["name"] for x in models}]
+        for pid in sorted(pinned_ids):
+            models.insert(0, {
+                "name": pid,
+                "context": None,
+                "prompt_price": "0",
+                "completion_price": "0",
+                "prompt_price_label": "free",
+                "completion_price_label": "free",
+                "pinned": True,
+            })
+
+        return {"success": True, "url": url, "models": models, "free_only": free_only}
     except Exception as e:
         logger.error(f"OpenRouter model list failed: {e}")
-        return {"success": False, "url": url, "error": str(e), "models": []}
+        return {"success": False, "url": url, "error": str(e), "models": [], "free_only": free_only}
 
 
 @app.post("/api/ollama/wake")
@@ -1026,6 +1105,14 @@ async def update_llm_config(body: LLMUpdateRequest):
         if body.provider == "openrouter":
             if not openrouter_api_key():
                 return {"success": False, "message": "OPENROUTER_API_KEY not set in environment"}
+            if not is_openrouter_free_model(body.model):
+                return {
+                    "success": False,
+                    "message": (
+                        f"Only OpenRouter :free models allowed — "
+                        f"{body.model} is not on the free tier"
+                    ),
+                }
             base_url = body.base_url or DEFAULT_OPENROUTER_URL
         elif body.provider == "ollama":
             base_url = body.base_url or DEFAULT_OLLAMA_URL
@@ -1051,27 +1138,57 @@ async def update_llm_config(body: LLMUpdateRequest):
 async def update_personality(body: PersonalityUpdateRequest):
     global config
     try:
-        pid = normalize_personality_id(body.personality)
+        pid = normalize_persona_id(body.personality)
         save_personality_settings(personality=pid)
         config = load_config()
         if llm_brain:
-            llm_brain.set_personality(pid)
-        p = get_personality(pid)
+            llm_brain.set_persona(pid)
+        p = get_persona(pid)
         await broadcast_ws({
-            "type": "personality",
+            "type": "persona",
+            "persona": pid,
             "personality": pid,
             "personality_name": p.name,
             "personality_label": p.chat_label,
         })
         return {
             "success": True,
-            "message": f"Personality set to {p.name}",
+            "message": f"Persona set to {p.name}",
+            "persona": pid,
             "personality": pid,
             "personality_name": p.name,
             "personality_label": p.chat_label,
         }
     except Exception as e:
-        logger.error(f"Personality update failed: {e}")
+        logger.error(f"Persona update failed: {e}")
+        return {"success": False, "message": str(e)}
+
+
+@app.post("/api/config/game-mode")
+async def update_game_mode(body: GameModeUpdateRequest):
+    global config
+    try:
+        mid = normalize_game_mode_id(body.game_mode)
+        save_game_mode_settings(game_mode=mid)
+        config = load_config()
+        if llm_brain:
+            llm_brain.set_game_mode(mid)
+        g = get_game_mode(mid)
+        await broadcast_ws({
+            "type": "game_mode",
+            "game_mode": mid,
+            "game_mode_name": g.name,
+            "game_mode_description": g.description,
+        })
+        return {
+            "success": True,
+            "message": f"Game mode set to {g.name}",
+            "game_mode": mid,
+            "game_mode_name": g.name,
+            "game_mode_description": g.description,
+        }
+    except Exception as e:
+        logger.error(f"Game mode update failed: {e}")
         return {"success": False, "message": str(e)}
 
 

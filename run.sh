@@ -49,13 +49,24 @@ start_bridge() {
     log "Run ./install.sh first"
     exit 1
   fi
-  # shellcheck source=/dev/null
-  source "${VENV}/bin/activate"
+
+  # Cursor AppImage can hijack .venv/bin/python — use system Python + venv site-packages.
+  BRIDGE_PY="/usr/bin/python3.14"
+  if [[ ! -x "${BRIDGE_PY}" ]]; then
+    BRIDGE_PY="$(command -v python3.14 || command -v python3)"
+  fi
+  PY_VER="$("${BRIDGE_PY}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+  VENV_SITE="${VENV}/lib/python${PY_VER}/site-packages"
+  if [[ ! -d "${VENV_SITE}" ]]; then
+    log "WARN: ${VENV_SITE} missing — run ./install.sh"
+    exit 1
+  fi
 
   mkdir -p "${ROOT}/logs"
   export SYX_BRIDGE_PORT="${port}"
+  export PYTHONPATH="${VENV_SITE}${PYTHONPATH:+:${PYTHONPATH}}"
   cd "${ROOT}/bridge"
-  nohup python -m bridge >>"${ROOT}/logs/bridge.log" 2>&1 &
+  nohup "${BRIDGE_PY}" -m bridge >>"${ROOT}/logs/bridge.log" 2>&1 &
   echo $! >"${ROOT}/logs/bridge.pid"
   log "Bridge starting (PID $(cat "${ROOT}/logs/bridge.pid")) — log: ${ROOT}/logs/bridge.log"
 
@@ -69,12 +80,28 @@ start_bridge() {
   log "WARN: bridge not responding yet — check ${ROOT}/logs/bridge.log"
 }
 
+watch_bridge() {
+  local port="${SYX_BRIDGE_PORT:-3847}"
+  local interval="${SYX_BRIDGE_WATCH_SEC:-30}"
+  log "Bridge watchdog — checking :${port} every ${interval}s (Ctrl+C to stop)"
+  while true; do
+    if ! curl -sf "http://localhost:${port}/api/health" >/dev/null 2>&1; then
+      log "Bridge down — restarting"
+      start_bridge || log "WARN: restart failed"
+    fi
+    sleep "${interval}"
+  done
+}
+
 case "${MODE}" in
   build)
     ensure_mod
     ;;
   bridge)
     start_bridge
+    ;;
+  watch)
+    watch_bridge
     ;;
   all|"")
     ensure_mod
@@ -98,11 +125,12 @@ EOF
     ;;
   -h|--help)
     cat <<EOF
-Usage: ./run.sh [all|build|bridge]
+Usage: ./run.sh [all|build|bridge|watch]
 
   all     Build mod if needed, start bridge, print instructions (default)
   build   Build/install mod only
   bridge  Start Python bridge only
+  watch   Keep bridge alive — restart if health check fails
 
 EOF
     ;;

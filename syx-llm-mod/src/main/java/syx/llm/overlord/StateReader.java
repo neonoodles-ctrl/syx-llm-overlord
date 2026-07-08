@@ -13,6 +13,8 @@ import settlement.army.ArmyManager;
 import settlement.army.div.Div;
 import settlement.main.SETT;
 import settlement.room.main.ROOMS;
+import settlement.room.main.RoomBlueprintImp;
+import settlement.room.main.RoomBlueprintIns;
 import settlement.room.main.throne.THRONE;
 import settlement.stats.STATS;
 import settlement.stats.colls.StatsPopulation;
@@ -21,6 +23,7 @@ import settlement.stats.standing.StandingCitizen;
 import util.data.INT;
 
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -41,6 +44,7 @@ public class StateReader {
         readResources(state);
         readMilitary(state);
         readRooms(state);
+        readConstruction(state);
         readFactions(state);
 
         return state;
@@ -193,9 +197,55 @@ public class StateReader {
 
             Map<String, Integer> roomMap = new LinkedHashMap<>();
             roomMap.put("stockpile_crates", rooms.STOCKPILE.crates());
+
+            int homeCount = 0;
+            int farmCount = 0;
+            int wellCount = 0;
+            for (RoomBlueprintImp imp : rooms.imps()) {
+                if (!(imp instanceof RoomBlueprintIns<?> ins)) {
+                    continue;
+                }
+                int n = ins.instancesSize();
+                if (n <= 0) {
+                    continue;
+                }
+                String key = imp.key.toUpperCase(Locale.ROOT);
+                if (key.contains("HOME") || key.equals("HOUSING")) {
+                    homeCount += n;
+                } else if (key.contains("WELL")) {
+                    wellCount += n;
+                } else if (key.contains("FARM") && !key.contains("COTTON") && !key.contains("FLAX")) {
+                    farmCount += n;
+                }
+            }
+            if (homeCount > 0) {
+                roomMap.put("home", homeCount);
+            }
+            if (farmCount > 0) {
+                roomMap.put("farm", farmCount);
+            }
+            if (wellCount > 0) {
+                roomMap.put("well", wellCount);
+            }
+
             state.roomCounts = roomMap;
         } catch (Exception e) {
             state.errors.add("rooms: " + e.getMessage());
+        }
+    }
+
+    private void readConstruction(GameState state) {
+        try {
+            ROOMS rooms = SETT.ROOMS();
+            if (rooms == null || rooms.construction == null) {
+                return;
+            }
+            Map<String, Integer> conMap = new LinkedHashMap<>();
+            conMap.put("instances", rooms.construction.instances());
+            conMap.put("area", rooms.construction.area(false));
+            state.construction = conMap;
+        } catch (Exception e) {
+            state.errors.add("construction: " + e.getMessage());
         }
     }
 
