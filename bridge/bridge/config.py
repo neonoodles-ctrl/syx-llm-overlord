@@ -35,7 +35,7 @@ def _load_env_files() -> None:
     _ENV_LOADED = True
 
 
-DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://10.0.10.151:11434/v1")
+DEFAULT_OLLAMA_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 DEFAULT_OPENROUTER_URL = "https://openrouter.ai/api/v1"
 DEFAULT_OPENROUTER_FREE_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 DEFAULT_OPENROUTER_FALLBACK = os.environ.get(
@@ -221,7 +221,11 @@ def load_config(path: str | Path = "config.yaml") -> Config:
     elif provider == "ollama":
         api_key = llm_data.get("api_key", "")
     else:
-        api_key = llm_data.get("api_key") or os.environ.get("OPENAI_API_KEY", "")
+        api_key = (
+            llm_data.get("api_key")
+            or os.environ.get("NEWAPI_API_KEY", "")
+            or os.environ.get("OPENAI_API_KEY", "")
+        )
 
     fallback = llm_data.get("fallback_model")
     if fallback is None and provider == "openrouter":

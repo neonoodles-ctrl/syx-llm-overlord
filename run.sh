@@ -50,7 +50,7 @@ start_bridge() {
     exit 1
   fi
 
-  # Cursor AppImage can hijack .venv/bin/python — use system Python + venv site-packages.
+  # An IDE AppImage can hijack .venv/bin/python — use system Python + venv site-packages.
   BRIDGE_PY="/usr/bin/python3.14"
   if [[ ! -x "${BRIDGE_PY}" ]]; then
     BRIDGE_PY="$(command -v python3.14 || command -v python3)"

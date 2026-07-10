@@ -10,6 +10,7 @@ build/
 .venv/
 config.yaml
 *.jar
+!.mvn/wrapper/maven-wrapper.jar
 target/
 .idea/
 *.iml
@@ -26,3 +27,12 @@ saves/
 
 # Runtime QA artifacts (bridge/scripts/map_dashboard_qa.py output)
 bridge/output/
+
+# Playwright browsers (heavy binaries, not project code)
+.playwright-browsers/
+
+# Agent run logs
+.agent-run-log.txt
+
+# Ship commit script
+scripts/ship-commit.fish

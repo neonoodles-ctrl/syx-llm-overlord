@@ -1,0 +1,59 @@
+{
+  "slice": 5,
+  "project": "syx-llm-overlord",
+  "repo": "/home/hermesprime/CODE/Boiler Room/_current/syx-llm-overlord",
+  "timestamp": "2026-07-10T11:37:30+10:00",
+  "profile": "python+java hybrid (manual supplement)",
+  "verdict": "pass",
+  "commit": "3a43614",
+  "branch": "slice-5-ship-prep",
+  "gates": {
+    "g0_git": {
+      "status": "warn",
+      "command": "git status --porcelain",
+      "output_tail": "?? output/audit-public-release.md\n?? output/images/",
+      "notes": "Untracked audit (redacted, not committed) and vision QA artifacts"
+    },
+    "g1_tests": {
+      "status": "pass",
+      "command": "cd bridge && python3 -m pytest -q",
+      "output_tail": "25 passed, 1 warning in 0.63s"
+    },
+    "g2_build": {
+      "status": "pass",
+      "command": "python3 -m compileall bridge/ && cd syx-llm-mod && ./mvnw -B clean package -DskipTests",
+      "output_tail": "compileall exit 0; mvnw BUILD SUCCESS"
+    },
+    "g3_lint": {
+      "status": "skip",
+      "notes": "pyproject.toml ruff/mypy present; not run in gate"
+    },
+    "g4_smoke": {
+      "status": "pass",
+      "command": "SYX_DISABLE_GAME_LAUNCH=1 ./run.sh bridge && curl /api/health && curl -X POST /api/restart",
+      "output_tail": "health ok game_connected=false; restart blocked with SYX_DISABLE_GAME_LAUNCH message"
+    },
+    "g5_acceptance": {
+      "status": "pass",
+      "notes": "Stage 1 ship-prep: localhost Ollama default, generic dashboard copy, game-launch guard, README clone URL restored, Zenmux removed"
+    },
+    "g6_vision": {
+      "status": "pass",
+      "command": "playwright headless capture",
+      "output_tail": "output/images/vision-qa-2026-07-10/ — dashboard + map + settings; Ollama (local) label confirmed, no Unraid strings",
+      "artifacts": [
+        "output/images/vision-qa-2026-07-10/dashboard-play.png",
+        "output/images/vision-qa-2026-07-10/map-tab.png",
+        "output/images/vision-qa-2026-07-10/settings-ollama-local.png",
+        "output/images/vision-qa-2026-07-10/report.json"
+      ]
+    },
+    "g7_sandbox": {
+      "status": "pass",
+      "notes": "Agent verify used SYX_DISABLE_GAME_LAUNCH=1; no game launch on :0"
+    }
+  },
+  "preview_url": "http://localhost:3847",
+  "gitlab": "http://10.0.20.150/boiler-room/syx-llm-overlord",
+  "github": "https://github.com/neonoodles-ctrl/syx-llm-overlord"
+}

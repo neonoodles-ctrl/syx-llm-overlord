@@ -439,7 +439,7 @@ Reply to the player now."""
             if (
                 not fb
                 or fb == self.config.model
-                or self.config.provider != "openrouter"
+                or self.config.provider not in ("openrouter", "openai", "api")
                 or not _is_retriable_llm_error(e)
             ):
                 raise
