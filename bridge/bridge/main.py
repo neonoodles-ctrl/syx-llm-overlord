@@ -945,14 +945,14 @@ async def set_monitor(body: MonitorUpdateRequest):
 
 @app.get("/api/ollama/models")
 async def list_ollama_models():
-    """Fetch model list from Unraid Ollama — only when Ollama is the active provider."""
+    """Fetch model list from local Ollama — only when Ollama is the active provider."""
     import httpx
 
     if not config or config.llm.provider != "ollama":
         return {
             "success": False,
             "skipped": True,
-            "error": "Ollama is not active — Apply Ollama as provider first (keeps Unraid VRAM free while using OpenRouter).",
+            "error": "Ollama is not active — Apply Ollama as provider first (keeps local VRAM free while using OpenRouter).",
             "models": [],
         }
     ollama_v1 = ollama_v1_url_from_config(config)
@@ -1053,7 +1053,7 @@ async def wake_ollama(body: OllamaWakeRequest | None = None):
         return {
             "success": False,
             "skipped": True,
-            "error": "Ollama is not active — Apply Ollama as provider before Wake (loads VRAM on Unraid).",
+            "error": "Ollama is not active — Apply Ollama as provider before Wake (loads VRAM on local Ollama).",
         }
 
     model = (body.model if body and body.model else None) or config.llm.model
@@ -1197,6 +1197,15 @@ async def restart_game():
     """Restart Songs of Syx without spawning a second syx launcher."""
     import os
     import subprocess
+
+    if os.environ.get("SYX_DISABLE_GAME_LAUNCH", "").strip().lower() in ("1", "true", "yes"):
+        return {
+            "success": False,
+            "message": (
+                "Game launch disabled (SYX_DISABLE_GAME_LAUNCH). "
+                "Use staging VM for automated game tests — do not restart on Ivan's desktop."
+            ),
+        }
 
     script = str(restart_script_path())
     env = os.environ.copy()

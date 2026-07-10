@@ -1807,7 +1807,7 @@ function renderConfigPanel(cfg) {
     <div class="config-row" style="flex-direction: column; align-items: stretch; gap: 6px;">
       <span class="config-label">Provider</span>
       <div class="provider-tabs">
-        <button type="button" class="provider-tab ${prov === 'ollama' ? 'active' : ''}" id="tabOllama" onclick="switchProvider('ollama')">Ollama (Unraid)</button>
+        <button type="button" class="provider-tab ${prov === 'ollama' ? 'active' : ''}" id="tabOllama" onclick="switchProvider('ollama')">Ollama (local)</button>
         <button type="button" class="provider-tab ${prov === 'openrouter' ? 'active' : ''}" id="tabOpenRouter" onclick="switchProvider('openrouter')">OpenRouter</button>
       </div>
       <div class="provider-panel ${prov === 'ollama' ? 'active' : ''}" id="panelOllama">
@@ -1821,7 +1821,7 @@ function renderConfigPanel(cfg) {
           <button class="btn" onclick="applyModel()">Apply</button>
           <button class="btn" onclick="refreshModels()">Refresh</button>
         </div>
-        <div class="config-hint" id="ollamaHint">${prov === 'ollama' ? 'Cold Unraid Ollama? Click Wake first (may take ~2 min).' : 'OpenRouter active — Ollama on Unraid is not contacted until you Apply Ollama.'}</div>
+        <div class="config-hint" id="ollamaHint">${prov === 'ollama' ? 'Cold Ollama? Click Wake first (may take ~2 min).' : 'OpenRouter active — local Ollama is not contacted until you Apply Ollama.'}</div>
       </div>
       <div class="provider-panel ${prov === 'openrouter' ? 'active' : ''}" id="panelOpenRouter">
         <div class="config-row" style="border:none;padding:4px 0;">
@@ -1878,7 +1878,7 @@ async function loadOllamaModels(selectedModel) {
   if (cfgCache.llm_provider !== 'ollama') {
     const msg = '<option value="">Apply Ollama provider to list models</option>';
     setSelectOptions(select, msg);
-    if (hint) hint.textContent = 'OpenRouter is active — Unraid Ollama stays idle until you Apply Ollama.';
+    if (hint) hint.textContent = 'OpenRouter is active — local Ollama stays idle until you Apply Ollama.';
     if (wakeBtn) wakeBtn.disabled = true;
     return;
   }
@@ -1981,7 +1981,7 @@ async function refreshModels() {
 
 async function wakeOllama() {
   if (cfgCache.llm_provider !== 'ollama') {
-    alert('Apply Ollama as the active provider first — Wake loads models into Unraid VRAM.');
+    alert('Apply Ollama as the active provider first — Wake loads models into local VRAM.');
     return;
   }
   const btn = document.getElementById('wakeBtn');
@@ -1989,7 +1989,7 @@ async function wakeOllama() {
   const select = document.getElementById('ollamaModelSelect');
   const model = select?.value;
   if (btn) { btn.disabled = true; btn.textContent = 'Waking…'; }
-  if (hint) hint.textContent = 'Loading model into VRAM — may take 1–3 minutes on cold Unraid…';
+  if (hint) hint.textContent = 'Loading model into VRAM — may take 1–3 minutes on a cold Ollama server…';
   try {
     const resp = await fetch('/api/ollama/wake', {
       method: 'POST',

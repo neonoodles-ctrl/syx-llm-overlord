@@ -15,7 +15,7 @@ Game (Java mod :47823) → Python bridge (:3847) → Ollama local OR cloud API
 ## Quick start
 
 ```bash
-# GitHub repo coming soon — clone from source for now:
+git clone git@github.com:neonoodles-ctrl/syx-llm-overlord.git
 cd syx-llm-overlord
 
 cp .env.example .env          # add API key if using cloud models
