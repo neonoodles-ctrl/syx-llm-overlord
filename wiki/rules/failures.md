@@ -8,8 +8,8 @@ What build errors mean and what to do next.
 | `Must not be placed on room` | Overlapping existing room | Offset coordinates; check memory for what’s built |
 | `insufficient: Crates` (stockpile) | Stockpile blueprint needs crate items in shape | Different indoor spot; build home first |
 | `Out of bounds` | x/y outside map | Use throne-relative coords |
-| `Unknown room type` | Bad target string | See [[rooms]] |
+| `Unknown room type` | Bad target string | See [rooms](rooms.md) |
 | `Command timed out waiting for game thread` | Game updater blocked (often TmpArea) | One command next tick; restart game if repeated |
 | `In use by: PlacerItemSingle` (game crash) | Stale placement lock | Fixed in mod — restart if on old JAR |
 
-Failures are duplicated as `[failure]` entries in [[../memory/log-format|memory log]].
+Failures are duplicated as `[failure]` entries in [memory log](../memory/log-format.md).

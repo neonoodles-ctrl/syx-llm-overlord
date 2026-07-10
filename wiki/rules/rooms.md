@@ -28,6 +28,6 @@ Resolved by `RoomResolver.java` in the mod. Use these `target` strings in build 
 
 ## Placement tips
 
-- Anchor all coordinates to [[playbook#Core facts|throne position]] ±40 tiles.
+- Anchor all coordinates to [throne position](playbook#Core facts.md) ±40 tiles.
 - Area rooms: spiral search relocates automatically if direct spot fails.
 - Single-item rooms (well): one attempt only — no spiral (TmpArea safety).

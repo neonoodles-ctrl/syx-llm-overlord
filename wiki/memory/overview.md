@@ -4,7 +4,7 @@ The overlord has **three layers of memory**:
 
 ## 1. Playbook (static rules — keep short)
 
-- Wiki: [[../rules/playbook]]
+- Wiki: [../rules/playbook](../rules/playbook.md)
 - Read **every tick** from `wiki/rules/playbook.md`
 - Core facts and day-0 priorities only — not a growing rule dump
 
@@ -13,7 +13,7 @@ The overlord has **three layers of memory**:
 - File: `logs/overlord-memory.jsonl` (or `SYX_MEMORY_PATH`)
 - Append-only JSONL — survives bridge restarts
 - Last ~30 entries injected as **SESSION MEMORY** each tick
-- Live mirror: [[live-log]]
+- Live mirror: [live-log](live-log.md)
 
 ## 3. Persistent knowledge (all games)
 
@@ -21,7 +21,7 @@ The overlord has **three layers of memory**:
 - **Survives new games and bridge restarts**
 - Auto-learns from failures: blacklists coords after 2 failures at the same spot; promotes patterns (TmpArea, woodcutter/stockpile deadlock) after repeated hits
 - Injected as **PERSISTENT KNOWLEDGE** each tick
-- Live mirror: [[knowledge]]
+- Live mirror: [knowledge](knowledge.md)
 - Manual facts: `POST /api/knowledge` with `{"text": "..."}`
 
 ### What gets logged automatically

@@ -1,0 +1,68 @@
+{
+  "slice": 5,
+  "project": "syx-llm-overlord",
+  "environment": "staging-vm",
+  "host": "10.0.10.202",
+  "repo_remote": "~/projects/syx-llm-overlord",
+  "repo_local": "/home/hermesprime/CODE/Boiler Room/_current/syx-llm-overlord",
+  "commit": "f4b976aaf7e7402957cd4cdace484ad56bcb934f",
+  "timestamp": "2026-07-07T17:29:00+10:00",
+  "profile": "hybrid-python-java-staging",
+  "verdict": "warn",
+  "gates": {
+    "g0_deploy": {
+      "status": "pass",
+      "command": "rsync to deploy@10.0.10.202:~/projects/syx-llm-overlord/",
+      "output_tail": "908482 bytes synced; .env and config.yaml excluded per staging policy"
+    },
+    "g1_tests": {
+      "status": "pass",
+      "command": "cd bridge && ../.venv/bin/python -m pytest -q",
+      "output_tail": "25 passed, 1 warning in 0.43s (Python 3.12.3 on ubuntu-staging)"
+    },
+    "g2_build": {
+      "status": "warn",
+      "command": "./mvnw clean package -DskipTests",
+      "output_tail": "FAIL: Could not find artifact com.songsofsyx:SongsOfSyx:jar:V69 — no SongsOfSyx.jar on VM",
+      "notes": "openjdk-21 installed on VM during run; mod compile requires game JAR path"
+    },
+    "g2_compileall": {
+      "status": "pass",
+      "command": ".venv/bin/python -m compileall bridge/bridge",
+      "output_tail": "OK"
+    },
+    "g4_smoke": {
+      "status": "pass",
+      "command": "curl http://10.0.10.202:3847/api/health",
+      "output_tail": "{\"status\":\"ok\",\"game_connected\":false}; dashboard HTTP 200 from LAN"
+    },
+    "g5_llm_runtime": {
+      "status": "warn",
+      "command": "bridge config on staging",
+      "output_tail": "llm: ollama qwen2.5:14b; openrouter: false",
+      "notes": "OPENROUTER_API_KEY not on VM; Ollama at 10.0.10.151 unreachable from staging — no live LLM parity with local nemotron setup"
+    },
+    "g6_vision": {
+      "status": "pass",
+      "command": "playwright on staging VM",
+      "output_tail": "output/images/vision-qa-2026-07-07/staging-dashboard.png",
+      "notes": "Dashboard renders on staging; game/mod API offline (expected without Syx)"
+    },
+    "g7_game_integration": {
+      "status": "skip",
+      "command": "mod API :47823",
+      "output_tail": "game_connected: false",
+      "notes": "Songs of Syx not installed on staging VM — end-to-end tick/chat not testable here"
+    }
+  },
+  "preview_url": "http://10.0.10.202:3847",
+  "artifacts": [
+    "/home/hermesprime/CODE/Boiler Room/_current/syx-llm-overlord/output/handoff/staging-test-run3.log",
+    "/home/hermesprime/CODE/Boiler Room/_current/syx-llm-overlord/output/images/vision-qa-2026-07-07/staging-dashboard.png"
+  ],
+  "blockers_for_full_pass": [
+    "Add OPENROUTER_API_KEY to staging VM (~/projects/syx-llm-overlord/.env or ~/.hermes/.env) for OpenRouter/nemotron parity",
+    "Provide SongsOfSyx.jar on staging (SONGSOFSYX_JAR) to complete mod mvn build",
+    "Optional: fix Ollama routing from 10.0.10.202 → 10.0.10.151 if using local LLM on staging"
+  ]
+}

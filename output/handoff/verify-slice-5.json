@@ -1,0 +1,62 @@
+{
+  "slice": 5,
+  "project": "syx-llm-overlord",
+  "repo": "/home/hermesprime/CODE/Boiler Room/_current/syx-llm-overlord",
+  "commit": "f4b976aaf7e7402957cd4cdace484ad56bcb934f",
+  "timestamp": "2026-07-07T17:08:00+10:00",
+  "profile": "hybrid-python-java",
+  "verdict": "pass",
+  "gates": {
+    "g0_git": {
+      "status": "pass",
+      "command": "git -C '/home/hermesprime/CODE/Boiler Room/_current/syx-llm-overlord' status --porcelain",
+      "output_tail": "?? .agent-run-log.txt\n?? scripts/ship-commit.fish",
+      "notes": "Committed slice files clean; only untracked helper/log files"
+    },
+    "g1_tests": {
+      "status": "pass",
+      "command": "cd bridge && python3 -m pytest -q",
+      "output_tail": "25 passed, 1 warning in 0.47s"
+    },
+    "g2_build": {
+      "status": "pass",
+      "command": "python3 -m compileall bridge/bridge && cd syx-llm-mod && ./mvnw -q clean package -DskipTests",
+      "output_tail": "compileall: OK; syx-llm-mod/target/syx-llm-overlord-1.0.0.jar (357923 bytes)"
+    },
+    "g3_lint": {
+      "status": "skip",
+      "command": "",
+      "output_tail": "",
+      "notes": "no lint configured"
+    },
+    "g4_smoke": {
+      "status": "pass",
+      "command": "curl -sf http://127.0.0.1:3847/api/health && curl -sf -o /dev/null -w '%{http_code}' http://127.0.0.1:3847/",
+      "output_tail": "{\"status\":\"ok\",\"game_connected\":false}; dashboard HTTP 200"
+    },
+    "g5_acceptance": {
+      "status": "warn",
+      "command": "manual — slices.md slice 5",
+      "output_tail": "Done = critic PASS; forest map origin + OpenRouter free check fixed; optional gh repo public",
+      "notes": "Builder gates pass; critic re-run pending on f4b976a (prior FAIL 2026-07-06 fixed in 7fe0736 + f4b976a)"
+    },
+    "g6_vision": {
+      "status": "pass",
+      "command": "playwright headless capture",
+      "output_tail": "output/images/vision-qa-2026-07-07/dashboard-play.png, map-tab.png, report.json",
+      "notes": "Dashboard renders; Map tab shows expected no-game state (game not running); LLM indicator green, nemotron model in chat bar"
+    },
+    "g7_sandbox": {
+      "status": "pass",
+      "command": "manual",
+      "output_tail": "",
+      "notes": "No live game instance — bridge-only sandbox"
+    }
+  },
+  "preview_url": "http://localhost:3847",
+  "artifacts": [
+    "/home/hermesprime/CODE/Boiler Room/_current/syx-llm-overlord/output/images/vision-qa-2026-07-07/dashboard-play.png",
+    "/home/hermesprime/CODE/Boiler Room/_current/syx-llm-overlord/output/images/vision-qa-2026-07-07/map-tab.png",
+    "/home/hermesprime/CODE/Boiler Room/_current/syx-llm-overlord/output/images/vision-qa-2026-07-07/report.json"
+  ]
+}

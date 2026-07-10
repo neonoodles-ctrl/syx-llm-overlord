@@ -11,35 +11,35 @@ Knowledge base for the AI overlord: how it plays, what it remembers, and how the
 
 ## Rules & playbooks
 
-- [[rules/playbook|Starter Playbook]] — **source of truth** injected into every LLM tick
-- [[modes/teacher|Teacher mode]] — teaches player while playing
-- [[modes/civil-flow|Civil Flow State]] — wiki-backed expert autopilot
-- [[rules/commands|Command API]] — what actions work vs stubs
-- [[rules/rooms|Room types & aliases]] — build targets the mod understands
-- [[rules/failures|Failure messages]] — how to read and recover from errors
+- [Starter Playbook](rules/playbook.md) — **source of truth** injected into every LLM tick
+- [Teacher mode](modes/teacher.md) — teaches player while playing
+- [Civil Flow State](modes/civil-flow.md) — wiki-backed expert autopilot
+- [Command API](rules/commands.md) — what actions work vs stubs
+- [Room types & aliases](rules/rooms.md) — build targets the mod understands
+- [Failure messages](rules/failures.md) — how to read and recover from errors
 
 ## Memory system
 
-- [[memory/live-log|Live session log]] — **auto-updated** mirror of JSONL (bridge writes each tick)
-- [[memory/overview|Memory overview]] — session log + prompt injection
-- [[memory/log-format|JSONL log format]] — file structure and entry kinds
-- [[memory/operations|Operations]] — API, dashboard, manual notes
+- [Live session log](memory/live-log.md) — **auto-updated** mirror of JSONL (bridge writes each tick)
+- [Memory overview](memory/overview.md) — session log + prompt injection
+- [JSONL log format](memory/log-format.md) — file structure and entry kinds
+- [Operations](memory/operations.md) — API, dashboard, manual notes
 
 ## Architecture
 
-- [[architecture/stack|Stack diagram]] — mod → bridge → LLM → dashboard
-- [[architecture/paths|Paths & ports]] — where everything lives on disk
+- [Stack diagram](architecture/stack.md) — mod → bridge → LLM → dashboard
+- [Paths & ports](architecture/paths.md) — where everything lives on disk
 
 ## Research
 
-- [[research/prior-art|Prior art]] — has anyone done this before?
+- [Prior art](research/prior-art.md) — has anyone done this before?
 
 ## Project
 
-- [[../project|Project hub]] — status, links, launcher
+- [Project hub](../project.md) — status, links, launcher
 
 ## Editing rules
 
-When you edit [[rules/playbook]], changes apply on the **next tick** automatically (bridge reads the file each decision). Optional: `POST http://localhost:3847/api/playbook/reload` to verify load.
+When you edit [rules/playbook](rules/playbook.md), changes apply on the **next tick** automatically (bridge reads the file each decision). Optional: `POST http://localhost:3847/api/playbook/reload` to verify load.
 
-Memory is **runtime** (JSONL at `logs/overlord-memory.jsonl`). The bridge mirrors the tail into [[memory/live-log]] each tick. Copy durable lessons into [[rules/playbook]] or add manual notes via dashboard / `POST /api/memory`.
+Memory is **runtime** (JSONL at `logs/overlord-memory.jsonl`). The bridge mirrors the tail into [memory/live-log](memory/live-log.md) each tick. Copy durable lessons into [rules/playbook](rules/playbook.md) or add manual notes via dashboard / `POST /api/memory`.
